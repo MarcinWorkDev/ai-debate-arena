@@ -7,6 +7,7 @@ export interface Agent {
   position: [number, number, number]
   rotation: number // Y rotation to face table center
   isModerator?: boolean
+  isHuman?: boolean
   active: boolean // whether this agent participates in debates
 }
 
@@ -24,6 +25,20 @@ const getDebaterAngles = (count: number): number[] => {
   const step = spread / (count - 1)
   return Array.from({ length: count }, (_, i) => (-0.33 + i * step + 1) * Math.PI)
 }
+
+// User agent - sits at the front-right
+const USER_ANGLE = 0.25 * Math.PI // front-right position
+export const createUserAgent = (userName: string): Agent => ({
+  id: 'user',
+  name: userName || 'You',
+  color: '#ec4899', // pink-500
+  model: 'human',
+  persona: '',
+  position: [TABLE_RADIUS * Math.sin(USER_ANGLE), 0, TABLE_RADIUS * Math.cos(USER_ANGLE)],
+  rotation: faceCenter(USER_ANGLE),
+  isHuman: true,
+  active: true
+})
 
 // ============================================
 // TABLE 1: Corporate Debate (INACTIVE)
@@ -144,21 +159,32 @@ export const moderator: Agent = {
   active: true
 }
 
-// Active agents for the current debate
+// Active agents for the current debate (AI only)
 export const agents: Agent[] = [...corporateAgents, ...techAgents].filter(a => a.active)
 
-// All participants including moderator (for rendering)
+// All participants including moderator (for rendering) - user is added dynamically
 export const allParticipants: Agent[] = [...agents, moderator]
+
+// Get all participants including user for rendering
+export const getAllParticipantsWithUser = (userName: string): Agent[] => {
+  return [...agents, moderator, createUserAgent(userName)]
+}
 
 export const getAgentById = (id: string): Agent | undefined => {
   return allParticipants.find(agent => agent.id === id)
 }
 
 // Better speaker selection - round-robin with slight randomization
+// Now accepts handRaised to prioritize user
 let speakerIndex = -1
-export const selectNextSpeaker = (lastSpeakerId: string | null): Agent => {
-  if (!lastSpeakerId) {
-    // First speaker - random
+export const selectNextSpeaker = (lastSpeakerId: string | null, handRaised: boolean = false): Agent | 'user' => {
+  // If user raised hand, they speak next
+  if (handRaised && lastSpeakerId !== 'user') {
+    return 'user'
+  }
+  
+  if (!lastSpeakerId || lastSpeakerId === 'user') {
+    // First speaker or after user - random AI agent
     speakerIndex = Math.floor(Math.random() * agents.length)
     return agents[speakerIndex]
   }

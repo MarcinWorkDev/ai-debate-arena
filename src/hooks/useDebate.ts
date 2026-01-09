@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react'
 import { useDebateStore } from '../stores/debateStore'
-import { agents, selectNextSpeaker, moderator } from '../lib/agents'
+import { agents, selectNextSpeaker, moderator, createUserAgent } from '../lib/agents'
 import { streamChat } from '../lib/api'
 
 export function useDebate() {
@@ -12,6 +12,9 @@ export function useDebate() {
     currentStreamingContent,
     roundCount,
     maxRounds,
+    userName,
+    handRaised,
+    isUserTurn,
     setTopic,
     setActiveAgent,
     setStatus,
@@ -20,6 +23,10 @@ export function useDebate() {
     finalizeMessage,
     incrementRound,
     reset,
+    setUserName,
+    toggleHandRaised,
+    setIsUserTurn,
+    submitUserMessage,
   } = useDebateStore()
 
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -87,7 +94,17 @@ Your task:
       ? store.messages[store.messages.length - 1].agentId 
       : null
     
-    const nextAgent = selectNextSpeaker(lastSpeakerId)
+    const nextSpeaker = selectNextSpeaker(lastSpeakerId, store.handRaised)
+    
+    // If it's user's turn, wait for their input
+    if (nextSpeaker === 'user') {
+      const userAgent = createUserAgent(store.userName)
+      setActiveAgent(userAgent)
+      setIsUserTurn(true)
+      return // Wait for user to submit their message
+    }
+    
+    const nextAgent = nextSpeaker
     setActiveAgent(nextAgent)
 
     // Build conversation history - format all previous statements for context
@@ -146,7 +163,26 @@ CRITICAL RULES:
       console.error('Error during agent turn:', error)
       setStatus('paused')
     }
-  }, [appendStreamingContent, finalizeMessage, incrementRound, setActiveAgent, setStatus, runModeratorSummary])
+  }, [appendStreamingContent, finalizeMessage, incrementRound, setActiveAgent, setStatus, setIsUserTurn, runModeratorSummary])
+
+  // Handle user submitting their message
+  const handleUserSubmit = useCallback((content: string) => {
+    if (!content.trim()) return
+    
+    submitUserMessage(content)
+    incrementRound()
+    setActiveAgent(null)
+    
+    // Continue debate after user's turn
+    setTimeout(() => {
+      const state = useDebateStore.getState()
+      if (state.status === 'running' && state.roundCount < state.maxRounds) {
+        runAgentTurn()
+      } else if (state.status === 'running' && state.roundCount >= state.maxRounds) {
+        runModeratorSummary()
+      }
+    }, 1000)
+  }, [submitUserMessage, incrementRound, setActiveAgent, runAgentTurn, runModeratorSummary])
 
   const startDebate = useCallback(() => {
     const store = useDebateStore.getState()
@@ -185,6 +221,9 @@ CRITICAL RULES:
     roundCount,
     maxRounds,
     agents,
+    userName,
+    handRaised,
+    isUserTurn,
     
     // Actions
     setTopic,
@@ -193,5 +232,8 @@ CRITICAL RULES:
     pauseDebate,
     resumeDebate,
     resetDebate,
+    setUserName,
+    toggleHandRaised,
+    handleUserSubmit,
   }
 }

@@ -4,11 +4,15 @@ import { EffectComposer, Bloom, Vignette, SMAA } from '@react-three/postprocessi
 import { RoundTable } from './RoundTable'
 import { AgentAvatar } from './AgentAvatar'
 import { Environment } from './Environment'
-import { allParticipants } from '../../lib/agents'
+import { getAllParticipantsWithUser } from '../../lib/agents'
 import { useDebateStore } from '../../stores/debateStore'
 
 export function Scene() {
   const activeAgent = useDebateStore((state) => state.activeAgent)
+  const userName = useDebateStore((state) => state.userName)
+  
+  // Get all participants including user
+  const participants = getAllParticipantsWithUser(userName)
 
   return (
     <div className="absolute inset-0 z-0">
@@ -28,7 +32,7 @@ export function Scene() {
 
         <RoundTable />
 
-        {allParticipants.map((agent) => (
+        {participants.map((agent) => (
           <AgentAvatar
             key={agent.id}
             agent={agent}

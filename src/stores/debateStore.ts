@@ -23,6 +23,11 @@ interface DebateState {
   currentStreamingContent: string
   roundCount: number
   maxRounds: number
+  
+  // User participation
+  userName: string
+  handRaised: boolean
+  isUserTurn: boolean
 
   // Actions
   setTopic: (topic: string) => void
@@ -35,6 +40,12 @@ interface DebateState {
   finalizeMessage: () => void
   incrementRound: () => void
   reset: () => void
+  
+  // User actions
+  setUserName: (name: string) => void
+  toggleHandRaised: () => void
+  setIsUserTurn: (isTurn: boolean) => void
+  submitUserMessage: (content: string) => void
 }
 
 export const useDebateStore = create<DebateState>((set, get) => ({
@@ -46,6 +57,11 @@ export const useDebateStore = create<DebateState>((set, get) => ({
   currentStreamingContent: '',
   roundCount: 0,
   maxRounds: 30,
+  
+  // User participation
+  userName: 'You',
+  handRaised: false,
+  isUserTurn: false,
 
   // Actions
   setTopic: (topic) => set({ topic }),
@@ -101,5 +117,32 @@ export const useDebateStore = create<DebateState>((set, get) => ({
     status: 'idle',
     currentStreamingContent: '',
     roundCount: 0,
+    handRaised: false,
+    isUserTurn: false,
   }),
+  
+  // User actions
+  setUserName: (name) => set({ userName: name }),
+  
+  toggleHandRaised: () => set((state) => ({ handRaised: !state.handRaised })),
+  
+  setIsUserTurn: (isTurn) => set({ isUserTurn: isTurn }),
+  
+  submitUserMessage: (content) => {
+    const { userName } = get()
+    const message: Message = {
+      id: crypto.randomUUID(),
+      agentId: 'user',
+      agentName: userName || 'You',
+      agentColor: '#ec4899', // pink-500
+      agentModel: 'human',
+      content,
+      timestamp: Date.now(),
+    }
+    set((state) => ({
+      messages: [...state.messages, message],
+      isUserTurn: false,
+      handRaised: false, // reset hand after speaking
+    }))
+  },
 }))
