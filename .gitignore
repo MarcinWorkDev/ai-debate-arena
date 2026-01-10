@@ -15,8 +15,8 @@ dist-ssr
 # Environment files
 .env
 .env.local
-.env.production
 .env.production.local
+# Note: .env.production is committed to repo (contains public Firebase config)
 
 # Editor directories and files
 .vscode/*

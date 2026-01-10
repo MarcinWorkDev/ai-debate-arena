@@ -13,12 +13,9 @@ RUN npm ci
 # Copy source files
 COPY . .
 
-# Copy .env.production file (must exist - create it from .env.production.example)
-# This file should contain VITE_FIREBASE_* variables for production build
-# Vite will automatically load .env.production during build
-COPY .env.production .env.production
-
 # Build the application (both frontend and backend)
+# Vite will automatically load .env.production during build
+# The file is committed to repo (contains public Firebase config values)
 RUN npm run build
 
 # Remove devDependencies to reduce image size
