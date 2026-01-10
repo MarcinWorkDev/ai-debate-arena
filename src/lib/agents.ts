@@ -199,6 +199,47 @@ export const getAgentById = (id: string): Agent | undefined => {
   return allParticipants.find(agent => agent.id === id)
 }
 
+// Import Avatar type from types/avatar.ts for conversion
+import type { Avatar } from './types/avatar'
+
+// Convert Avatar (from Firestore) to Agent (for 3D scene)
+export function avatarToAgent(avatar: Avatar, position: [number, number, number], rotation: number): Agent {
+  return {
+    id: avatar.id,
+    name: avatar.name,
+    color: avatar.color,
+    model: avatar.model,
+    persona: avatar.persona,
+    position,
+    rotation,
+    isModerator: avatar.isModerator,
+    active: avatar.status === 'active',
+  }
+}
+
+// Convert multiple avatars to agents with calculated positions
+export function avatarsToAgents(avatars: Avatar[]): Agent[] {
+  if (avatars.length === 0) return []
+
+  const angles = getDebaterAngles(avatars.length)
+
+  return avatars.map((avatar, index) => ({
+    id: avatar.id,
+    name: avatar.name,
+    color: avatar.color,
+    model: avatar.model,
+    persona: avatar.persona,
+    position: [
+      TABLE_RADIUS * Math.sin(angles[index]),
+      0,
+      TABLE_RADIUS * Math.cos(angles[index])
+    ] as [number, number, number],
+    rotation: faceCenter(angles[index]),
+    isModerator: avatar.isModerator,
+    active: avatar.status === 'active',
+  }))
+}
+
 // Better speaker selection - round-robin with slight randomization
 // Now accepts handRaised to prioritize user and list of available agents
 let speakerIndex = -1

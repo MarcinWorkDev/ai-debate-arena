@@ -35,6 +35,25 @@ body,
   overflow: hidden;
 }
 
+/* Allow scrolling on admin pages */
+html.admin-page {
+  overflow: auto !important;
+  height: auto !important;
+  min-height: 100%;
+}
+
+body.admin-page {
+  overflow: auto !important;
+  height: auto !important;
+  min-height: 100%;
+}
+
+body.admin-page #root {
+  overflow: auto !important;
+  height: auto !important;
+  min-height: 100%;
+}
+
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background-color: #0a0a0f;

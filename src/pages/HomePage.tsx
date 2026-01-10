@@ -40,6 +40,12 @@ export function HomePage() {
             <span className="text-slate-400 text-sm">{profile?.creditsAvailable || 0} credits</span>
           </div>
           <Link
+            to="/avatars"
+            className="bg-slate-900/90 backdrop-blur-sm rounded-lg border border-slate-800 px-3 py-1.5 text-slate-400 hover:text-white text-sm transition-colors cursor-pointer"
+          >
+            Avatars
+          </Link>
+          <Link
             to="/history"
             className="bg-slate-900/90 backdrop-blur-sm rounded-lg border border-slate-800 px-3 py-1.5 text-slate-400 hover:text-white text-sm transition-colors cursor-pointer"
           >

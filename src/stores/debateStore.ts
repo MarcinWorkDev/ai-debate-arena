@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import type { Agent } from '../lib/agents'
-import { agents } from '../lib/agents'
 
 export interface Message {
   id: string
@@ -89,8 +88,8 @@ export const useDebateStore = create<DebateState>((set, get) => ({
   handRaised: false,
   isUserTurn: false,
 
-  // Selected debaters (default to active agents)
-  selectedAgentIds: agents.filter(a => a.active).map(a => a.id),
+  // Selected debaters (will be populated when avatars are loaded from Firestore)
+  selectedAgentIds: [],
 
   // Actions
   setDebateId: (id) => set({ debateId: id }),
@@ -124,22 +123,39 @@ export const useDebateStore = create<DebateState>((set, get) => ({
     })),
 
   finalizeMessage: (tokensUsed?: number) => {
-    const { activeAgent, currentStreamingContent } = get()
+    const { activeAgent, currentStreamingContent, messages } = get()
     if (activeAgent && currentStreamingContent) {
-      const message: Message = {
-        id: crypto.randomUUID(),
-        agentId: activeAgent.id,
-        agentName: activeAgent.name,
-        agentColor: activeAgent.color,
-        agentModel: activeAgent.model,
-        content: currentStreamingContent,
-        timestamp: Date.now(),
-        tokensUsed,
+      // Find the last streaming message and update it instead of creating a new one
+      const lastMessageIndex = messages.length - 1
+      const lastMessage = messages[lastMessageIndex]
+      
+      if (lastMessage && lastMessage.isStreaming && lastMessage.agentId === activeAgent.id) {
+        // Update existing streaming message
+        set((state) => ({
+          messages: state.messages.map((msg, idx) => 
+            idx === lastMessageIndex
+              ? { ...msg, content: currentStreamingContent, isStreaming: false, tokensUsed }
+              : msg
+          ),
+          currentStreamingContent: '',
+        }))
+      } else {
+        // No streaming message found, create a new one (fallback)
+        const message: Message = {
+          id: crypto.randomUUID(),
+          agentId: activeAgent.id,
+          agentName: activeAgent.name,
+          agentColor: activeAgent.color,
+          agentModel: activeAgent.model,
+          content: currentStreamingContent,
+          timestamp: Date.now(),
+          tokensUsed,
+        }
+        set((state) => ({
+          messages: [...state.messages, message],
+          currentStreamingContent: '',
+        }))
       }
-      set((state) => ({
-        messages: [...state.messages, message],
-        currentStreamingContent: '',
-      }))
     }
   },
 
@@ -153,8 +169,7 @@ export const useDebateStore = create<DebateState>((set, get) => ({
     set((state) => ({ roundCount: state.roundCount + 1 })),
 
   reset: () => {
-    // Reset to default selected agents (active ones)
-    const defaultSelectedIds = agents.filter(a => a.active).map(a => a.id)
+    // Reset state (selected agents will be repopulated when avatars are loaded)
     set({
       debateId: null,
       topic: '',
@@ -168,7 +183,7 @@ export const useDebateStore = create<DebateState>((set, get) => ({
       creditsUsedInSession: 0,
       handRaised: false,
       isUserTurn: false,
-      selectedAgentIds: defaultSelectedIds,
+      selectedAgentIds: [],
     })
   },
   
