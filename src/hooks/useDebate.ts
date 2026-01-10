@@ -2,24 +2,32 @@ import { useCallback } from 'react'
 import { useDebateStore } from '../stores/debateStore'
 import { useAuthStore } from '../stores/authStore'
 import { useAvatarStore } from '../stores/avatarStore'
-import { agents, selectNextSpeaker, moderator, createUserAgent, allAvailableAgents, avatarsToAgents } from '../lib/agents'
+import { agents, selectNextSpeaker, moderator, createUserAgent, avatarsToAgents } from '../lib/agents'
 import { streamChatWithUsage } from '../lib/api'
 import { updateUserCredits, createDebate, addMessage as addMessageToDb, updateDebate, addCreditsToDebate, getActiveDebate, getMessages } from '../lib/db'
 import type { DebateMessage } from '../lib/db'
+import type { RoundType, ModeratorSummaryData } from '../lib/roundTypes'
+import {
+  getStatementSystemPrompt,
+  getSummarySystemPrompt,
+  getEscalationSystemPrompt,
+  getFinalSummarySystemPrompt,
+  formatModeratorSummary,
+  LANGUAGE_INSTRUCTIONS
+} from '../lib/prompts'
+import {
+  DEFAULT_ROUND_CONFIG,
+  countStatements,
+  shouldRunModeratorRound,
+  shouldRunEscalation
+} from '../lib/roundConfig'
 
 // Convert OpenAI tokens to credits (1 credit = 1000 tokens)
 const tokensToCredits = (tokens: number): number => Math.ceil(tokens / 1000)
 
-// Language prompts
-const languageInstructions = {
-  en: 'Speak in English.',
-  pl: 'Mów po polsku.',
-}
-
 export function useDebate() {
   const {
     topic,
-    language,
     messages,
     activeAgent,
     status,
@@ -29,16 +37,11 @@ export function useDebate() {
     userName,
     handRaised,
     isUserTurn,
-    debateId,
     setDebateId,
     setTopic,
-    setLanguage,
     setActiveAgent,
     setStatus,
     setMaxRounds,
-    setRoundCount,
-    appendStreamingContent,
-    finalizeMessage,
     incrementRound,
     reset,
     setUserName,
@@ -57,18 +60,20 @@ export function useDebate() {
     tokensUsed: number,
     inputTokens?: number,
     outputTokens?: number,
-    reasoningTokens?: number
+    reasoningTokens?: number,
+    prompt?: string,
+    systemPrompt?: string,
+    roundType?: RoundType
   ) => {
     const store = useDebateStore.getState()
     if (!store.debateId) return
 
-    // Ensure all token values are numbers, not undefined
     const finalInputTokens = typeof inputTokens === 'number' ? inputTokens : 0
     const finalOutputTokens = typeof outputTokens === 'number' ? outputTokens : 0
     const finalReasoningTokens = typeof reasoningTokens === 'number' ? reasoningTokens : 0
     const finalTokensUsed = typeof tokensUsed === 'number' ? tokensUsed : 0
 
-    const messageData = {
+    const messageData: any = {
       avatarId: agentId,
       avatarName: agentName,
       avatarColor: agentColor,
@@ -82,6 +87,16 @@ export function useDebate() {
       parentMessageId: null,
     }
 
+    if (prompt !== undefined) {
+      messageData.prompt = prompt
+    }
+    if (systemPrompt !== undefined) {
+      messageData.systemPrompt = systemPrompt
+    }
+    if (roundType) {
+      messageData.roundType = roundType
+    }
+
     try {
       await addMessageToDb(store.debateId, messageData)
     } catch (error) {
@@ -89,157 +104,27 @@ export function useDebate() {
     }
   }, [])
 
-  // Moderator summarizes the debate at the end
-  const runModeratorSummary = useCallback(async () => {
-    const store = useDebateStore.getState()
+  // Helper to update credits after API call
+  const updateCredits = useCallback(async (tokensUsed: number) => {
+    if (tokensUsed <= 0) return
 
-    // Make sure we're still in a valid state to summarize
-    if (store.status !== 'running') {
-      setStatus('finished')
-      return
+    const creditsUsed = tokensToCredits(tokensUsed)
+
+    // Update debate credits
+    const currentDebateId = useDebateStore.getState().debateId
+    if (currentDebateId) {
+      try {
+        await addCreditsToDebate(currentDebateId, creditsUsed)
+      } catch (error) {
+        console.error('Error updating debate credits:', error)
+      }
     }
 
-    // Check if moderator already provided summary (last message is from moderator)
-    const lastMessage = store.messages[store.messages.length - 1]
-    if (lastMessage && lastMessage.agentId === 'moderator') {
-      setStatus('finished')
-      setActiveAgent(null)
-      return
-    }
-
-    setActiveAgent(moderator)
-
-    const debateHistory = store.messages
-      .map(m => `**${m.agentName}** said: "${m.content}"`)
-      .join('\n\n')
-
-    const langInstruction = languageInstructions[store.language]
-
-    const apiMessages = [
-      {
-        role: 'user' as const,
-        content: `DEBATE TOPIC: "${store.topic}"\n\nLANGUAGE: Respond in ${store.language === 'en' ? 'English' : 'Polish'} (${langInstruction})\n\n---\nFULL DEBATE TRANSCRIPT:\n\n${debateHistory}\n\n---\nPlease provide a summary of this debate.`
-      }
-    ]
-
-    try {
-      // Initialize streaming message
-      useDebateStore.getState().addMessage({
-        agentId: moderator.id,
-        agentName: moderator.name,
-        agentColor: moderator.color,
-        agentModel: moderator.model,
-        content: '',
-        isStreaming: true,
-      })
-
-      const result = await streamChatWithUsage(
-        {
-          model: moderator.model,
-          messages: apiMessages,
-          systemPrompt: `You are the debate Moderator. ${moderator.persona}
-
-Your task:
-1. Summarize the key arguments from each participant
-2. Identify main points of agreement and disagreement
-3. Provide a balanced conclusion
-
-CRITICAL: Format your summary using structured Markdown - DO NOT write plain text with just bold/italics. Use proper structure:
-
-## Required Structure:
-
-### Use Section Headings (## or ###)
-Organize your summary with clear sections like:
-- ## Key Arguments
-- ## Points of Agreement
-- ## Points of Disagreement  
-- ## Conclusion
-
-### Use Lists Extensively
-- Use bullet lists (-) for arguments, points, examples
-- Use numbered lists (1.) for sequences or priorities
-- Nest lists when needed (indent with 2 spaces)
-
-### Use Tables When Appropriate
-For comparing positions or summarizing multiple participants:
-| Participant | Key Argument | Position |
-|------------|-------------|----------|
-| Name | Argument | For/Against |
-
-### Use Formatting Elements
-- **Bold** for key concepts and conclusions
-- *Italics* for participant names or emphasis
-- Inline code (backticks) for technical terms if needed
-
-### Structure Example:
-## Summary
-
-### Key Arguments
-- **Participant A**: [argument]
-- **Participant B**: [argument]
-
-### Agreement Points
-1. Point 1
-2. Point 2
-
-### Disagreement Points
-- Issue 1: [description]
-- Issue 2: [description]
-
-## Conclusion
-[Your balanced conclusion]
-
-Make it visually structured and easy to scan - NOT a wall of text!
-${langInstruction}`
-        },
-        (chunk) => {
-          useDebateStore.getState().appendStreamingContent(chunk)
-        }
-      )
-
-      // Extract token usage with proper defaults
-      // Map API field names to database field names:
-      // - promptTokens (from API) -> inputTokens (in DB)
-      // - completionTokens (from API) -> outputTokens (in DB)
-      const inputTokens = result.usage?.promptTokens ?? 0
-      const outputTokens = result.usage?.completionTokens ?? 0
-      const reasoningTokens = result.usage?.reasoningTokens ?? 0
-      const tokensUsed = result.usage?.totalTokens ?? (inputTokens + outputTokens + reasoningTokens)
-      const finalContent = result.content || useDebateStore.getState().currentStreamingContent || ''
-      
-      // Finalize message with content
-      useDebateStore.getState().finalizeMessage(tokensUsed)
-      useDebateStore.getState().addTokensUsed(tokensUsed)
-
-      // Save to Firestore
-      await saveMessageToDb(
-        moderator.id,
-        moderator.name,
-        moderator.color,
-        moderator.model,
-        finalContent,
-        tokensUsed,
-        inputTokens,
-        outputTokens,
-        reasoningTokens
-      )
-
-      // Update debate credits and status in Firestore
-      const currentDebateId = useDebateStore.getState().debateId
-      if (currentDebateId) {
-        if (tokensUsed > 0) {
-          const creditsUsed = tokensToCredits(tokensUsed)
-          await addCreditsToDebate(currentDebateId, creditsUsed)
-        }
-        await updateDebate(currentDebateId, { status: 'finished' })
-      }
-
-      // Update user credits in Firestore
-      const authStore = useAuthStore.getState()
-      if (authStore.user && tokensUsed > 0) {
-        const creditsUsed = tokensToCredits(tokensUsed)
+    // Update user credits
+    const authStore = useAuthStore.getState()
+    if (authStore.user) {
+      try {
         await updateUserCredits(authStore.user.uid, creditsUsed)
-        // Update local profile
         if (authStore.profile) {
           authStore.setProfile({
             ...authStore.profile,
@@ -247,119 +132,64 @@ ${langInstruction}`
             creditsUsed: authStore.profile.creditsUsed + creditsUsed,
           })
         }
+      } catch (error) {
+        console.error('Error updating user credits:', error)
       }
-
-      // Success - mark as finished
-      setStatus('finished')
-      setActiveAgent(null)
-    } catch (error) {
-      console.error('Error during moderator summary:', error)
-      
-      // Try to save partial content if available
-      const store = useDebateStore.getState()
-      const partialContent = store.currentStreamingContent || ''
-      
-      if (partialContent.trim().length > 0) {
-        try {
-          // Finalize the partial message
-          useDebateStore.getState().finalizeMessage(0)
-          
-          // Save partial content to Firestore
-          await saveMessageToDb(
-            moderator.id,
-            moderator.name,
-            moderator.color,
-            moderator.model,
-            partialContent + '\n\n[Summary was interrupted due to an error]',
-            0,
-            0,
-            0,
-            0
-          )
-          
-          // Update debate status
-          const currentDebateId = store.debateId
-          if (currentDebateId) {
-            await updateDebate(currentDebateId, { status: 'finished' })
-          }
-          
-          setStatus('finished')
-          setActiveAgent(null)
-          return
-        } catch (saveError) {
-          console.error('Error saving partial summary:', saveError)
-        }
-      }
-      
-      // If we couldn't save partial content, pause the debate so user can retry
-      setStatus('paused')
-      setActiveAgent(null)
     }
-  }, [setActiveAgent, setStatus, saveMessageToDb])
+  }, [])
 
-  const runAgentTurn = useCallback(async () => {
+  // ============================================
+  // ROUND EXECUTORS
+  // ============================================
+
+  // Execute STATEMENT round - random avatar responds
+  const executeStatementRound = useCallback(async (): Promise<boolean> => {
     const store = useDebateStore.getState()
-
-    if (store.status !== 'running') return
-    
-    // Check if moderator already provided summary (in DB or in local state)
-    const lastMessage = store.messages[store.messages.length - 1]
-    if (lastMessage && lastMessage.agentId === 'moderator') {
-      setStatus('finished')
-      setActiveAgent(null)
-      return
-    }
-    
-    // Check if moderator is currently streaming (partial content)
-    if (store.activeAgent?.id === 'moderator' && store.currentStreamingContent) {
-      return
-    }
-    
-    if (store.roundCount >= store.maxRounds) {
-      // All rounds done - call moderator for summary
-      await runModeratorSummary()
-      return
-    }
 
     const lastSpeakerId = store.messages.length > 0
       ? store.messages[store.messages.length - 1].agentId
       : null
 
-    // Get selected avatars from database and convert to agents
+    // Get selected avatars and convert to agents
     const avatarStore = useAvatarStore.getState()
     const allAvatars = avatarStore.getVisibleAvatars()
     const selectedAvatars = store.selectedAgentIds.length > 0
       ? allAvatars.filter(avatar => store.selectedAgentIds.includes(avatar.id) && !avatar.isModerator)
       : []
-    
-    // Convert avatars to agents
     const selectedAgents = avatarsToAgents(selectedAvatars)
 
     const nextSpeaker = selectNextSpeaker(lastSpeakerId, store.handRaised, selectedAgents)
 
-    // If it's user's turn, wait for their input
+    // If it's user's turn, wait for input
     if (nextSpeaker === 'user') {
       const userAgent = createUserAgent(store.userName)
       setActiveAgent(userAgent)
       setIsUserTurn(true)
-      return // Wait for user to submit their message
+      return false // Don't continue loop - wait for user
     }
 
     const nextAgent = nextSpeaker
     setActiveAgent(nextAgent)
 
-    // Build conversation history - format all previous statements for context
-    const debateHistory = store.messages
+    // Build conversation history - filter out summaries (they're in systemPrompt), keep escalations
+    const participantMessages = store.messages.filter(m => m.roundType !== 'summary')
+    const recentMessages = participantMessages.slice(-DEFAULT_ROUND_CONFIG.statementContextSize)
+    const debateHistory = recentMessages
       .map(m => `**${m.agentName}** said: "${m.content}"`)
       .join('\n\n')
 
-    const langInstruction = languageInstructions[store.language]
+    const systemPrompt = getStatementSystemPrompt(
+      nextAgent.name,
+      nextAgent.persona,
+      store.language,
+      store.moderatorSummary
+    )
 
     const apiMessages = [
       {
         role: 'user' as const,
         content: debateHistory
-          ? `DEBATE TOPIC: "${store.topic}"\n\n---\nCONVERSATION SO FAR:\n\n${debateHistory}\n\n---\nNow respond to the above. Reference specific points others made. Do you agree or disagree with something specific?`
+          ? `DEBATE TOPIC: "${store.topic}"\n\n---\nCONVERSATION SO FAR:\n\n${debateHistory}\n\n---\nNow it's your turn to speak.`
           : `DEBATE TOPIC: "${store.topic}"\n\nYou are the first speaker. Open the debate with your perspective on this topic.`
       }
     ]
@@ -370,18 +200,7 @@ ${langInstruction}`
         {
           model: nextAgent.model,
           messages: apiMessages,
-          systemPrompt: `You are "${nextAgent.name}" in a debate. Your personality: ${nextAgent.persona}
-
-CRITICAL RULES:
-1. NEVER start with your name or any prefix like "[Name]:" - just speak directly
-2. You MUST respond to specific points made by other debaters - quote or reference them
-3. Agree, disagree, or build on what others said - don't just state your general opinion
-4. Keep it to 1-2 short sentences maximum
-5. Be conversational and engaging, like a real debate
-6. Speak in a tone consistent with your role/persona
-7. Stay on topic and avoid going off on tangents
-8. If you are the first speaker, open the debate with your perspective on the topic
-9. ${langInstruction}`
+          systemPrompt,
         },
         (chunk) => {
           const currentStatus = useDebateStore.getState().status
@@ -393,114 +212,466 @@ CRITICAL RULES:
         }
       )
 
-      if (aborted) return
+      if (aborted) return false
 
       const currentStatus = useDebateStore.getState().status
-      if (currentStatus === 'running') {
-        // Extract token usage with proper defaults
-        // Map API field names to database field names:
-        // - promptTokens (from API) -> inputTokens (in DB)
-        // - completionTokens (from API) -> outputTokens (in DB)
-        const inputTokens = result.usage?.promptTokens ?? 0
-        const outputTokens = result.usage?.completionTokens ?? 0
-        const reasoningTokens = result.usage?.reasoningTokens ?? 0
-        const tokensUsed = result.usage?.totalTokens ?? (inputTokens + outputTokens + reasoningTokens)
-        
-        useDebateStore.getState().finalizeMessage(tokensUsed)
-        useDebateStore.getState().addTokensUsed(tokensUsed)
-        useDebateStore.getState().incrementRound()
+      if (currentStatus !== 'running') return false
 
-        // Save to Firestore
-        const store = useDebateStore.getState()
-        
-        await saveMessageToDb(
-          nextAgent.id,
-          nextAgent.name,
-          nextAgent.color,
-          nextAgent.model,
-          result.content,
-          tokensUsed,
-          inputTokens,
-          outputTokens,
-          reasoningTokens
-        )
+      // Extract token usage
+      const inputTokens = result.usage?.promptTokens ?? 0
+      const outputTokens = result.usage?.completionTokens ?? 0
+      const reasoningTokens = result.usage?.reasoningTokens ?? 0
+      const tokensUsed = result.usage?.totalTokens ?? (inputTokens + outputTokens + reasoningTokens)
 
-        // Update debate roundCount and credits in Firestore
-        if (store.debateId) {
-          await updateDebate(store.debateId, { roundCount: store.roundCount })
-          if (tokensUsed > 0) {
-            const creditsUsed = tokensToCredits(tokensUsed)
-            await addCreditsToDebate(store.debateId, creditsUsed)
-          }
-        }
+      // Add message manually with roundType (don't use finalizeMessage - it doesn't support roundType)
+      const finalContent = result.content || useDebateStore.getState().currentStreamingContent || ''
+      useDebateStore.getState().addMessage({
+        agentId: nextAgent.id,
+        agentName: nextAgent.name,
+        agentColor: nextAgent.color,
+        agentModel: nextAgent.model,
+        content: finalContent,
+        tokensUsed,
+        roundType: 'statement',
+      })
+      // Clear streaming content
+      useDebateStore.setState({ currentStreamingContent: '' })
+      useDebateStore.getState().addTokensUsed(tokensUsed)
+      useDebateStore.getState().incrementRound()
 
-        // Update user credits in Firestore
-        const authStore = useAuthStore.getState()
-        if (authStore.user && tokensUsed > 0) {
-          const creditsUsed = tokensToCredits(tokensUsed)
-          await updateUserCredits(authStore.user.uid, creditsUsed)
-          // Update local profile
-          if (authStore.profile) {
-            authStore.setProfile({
-              ...authStore.profile,
-              creditsAvailable: Math.max(0, authStore.profile.creditsAvailable - creditsUsed),
-              creditsUsed: authStore.profile.creditsUsed + creditsUsed,
-            })
-          }
-        }
+      // Save to Firestore
+      const promptText = JSON.stringify(apiMessages, null, 2)
+      await saveMessageToDb(
+        nextAgent.id,
+        nextAgent.name,
+        nextAgent.color,
+        nextAgent.model,
+        result.content,
+        tokensUsed,
+        inputTokens,
+        outputTokens,
+        reasoningTokens,
+        promptText,
+        systemPrompt,
+        'statement'
+      )
 
-        // Schedule next turn or go to summary
-        const currentState = useDebateStore.getState()
-        if (currentState.roundCount >= currentState.maxRounds) {
-          // If we've reached max rounds and last message used tokens, go to summary immediately
-          if (tokensUsed > 0) {
-            await runModeratorSummary()
-          } else {
-            // Wait a bit then go to summary
-            setTimeout(async () => {
-              await runModeratorSummary()
-            }, 1500)
-          }
-        } else {
-          // Schedule next turn
-          setTimeout(async () => {
-            const state = useDebateStore.getState()
-            if (state.status === 'running' && state.roundCount < state.maxRounds) {
-              runAgentTurn()
-            } else if (state.status === 'running' && state.roundCount >= state.maxRounds) {
-              // Trigger moderator summary
-              await runModeratorSummary()
-            }
-          }, 1500) // Pause between speakers
+      // Update debate roundCount
+      const storeAfter = useDebateStore.getState()
+      if (storeAfter.debateId) {
+        await updateDebate(storeAfter.debateId, { roundCount: storeAfter.roundCount })
+      }
+
+      await updateCredits(tokensUsed)
+      return true
+    } catch (error) {
+      console.error('Error during statement round:', error)
+      setStatus('paused')
+      return false
+    }
+  }, [setActiveAgent, setIsUserTurn, setStatus, saveMessageToDb, updateCredits])
+
+  // Execute SUMMARY round - moderator creates JSON summary
+  const executeSummaryRound = useCallback(async (): Promise<boolean> => {
+    const store = useDebateStore.getState()
+
+    setActiveAgent(moderator)
+
+    // Get recent messages for summary context (exclude previous summaries, keep escalations)
+    const allMessages = store.messages.filter(m => m.roundType !== 'summary')
+    const recentMessages = allMessages.slice(-DEFAULT_ROUND_CONFIG.summaryContextSize)
+    const debateHistory = recentMessages
+      .map(m => `**${m.agentName}** said: "${m.content}"`)
+      .join('\n\n')
+
+    const systemPrompt = getSummarySystemPrompt(store.language)
+    const apiMessages = [
+      {
+        role: 'user' as const,
+        content: `DEBATE TOPIC: "${store.topic}"\n\n---\nRECENT DEBATE TRANSCRIPT (last ${recentMessages.length} messages):\n\n${debateHistory}\n\n---\nAnalyze the current state of the debate and provide a summary.`
+      }
+    ]
+
+    try {
+      const result = await streamChatWithUsage(
+        {
+          model: moderator.model,
+          messages: apiMessages,
+          systemPrompt,
+        },
+        () => {} // No streaming for summary
+      )
+
+      const content = result.content || ''
+
+      // Parse JSON from response
+      let jsonContent = content.trim()
+      if (jsonContent.startsWith('```')) {
+        const lines = jsonContent.split('\n')
+        const lastLine = lines[lines.length - 1]
+        if (lastLine === '```') {
+          jsonContent = lines.slice(1, -1).join('\n')
         }
       }
+      const jsonMatch = jsonContent.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        jsonContent = jsonMatch[0]
+      }
+
+      // Extract token usage
+      const inputTokens = result.usage?.promptTokens ?? 0
+      const outputTokens = result.usage?.completionTokens ?? 0
+      const reasoningTokens = result.usage?.reasoningTokens ?? 0
+      const tokensUsed = result.usage?.totalTokens ?? (inputTokens + outputTokens + reasoningTokens)
+
+      try {
+        const summary = JSON.parse(jsonContent) as ModeratorSummaryData
+
+        if (
+          Array.isArray(summary.core_disagreements) &&
+          Array.isArray(summary.points_of_tentative_agreement) &&
+          Array.isArray(summary.arguments_repeated_too_often) &&
+          Array.isArray(summary.missing_or_underexplored_angles)
+        ) {
+          // Save to store
+          useDebateStore.getState().setModeratorSummary(summary)
+
+          // Format as markdown for display
+          const summaryContent = formatModeratorSummary(summary, store.language)
+
+          // Add summary message (collapsible via roundType)
+          useDebateStore.getState().addMessage({
+            agentId: moderator.id,
+            agentName: moderator.name,
+            agentColor: moderator.color,
+            agentModel: moderator.model,
+            content: summaryContent,
+            roundType: 'summary',
+            tokensUsed,
+          })
+
+          // Save to Firestore
+          const promptText = JSON.stringify(apiMessages, null, 2)
+          await saveMessageToDb(
+            moderator.id,
+            moderator.name,
+            moderator.color,
+            moderator.model,
+            summaryContent,
+            tokensUsed,
+            inputTokens,
+            outputTokens,
+            reasoningTokens,
+            promptText,
+            systemPrompt,
+            'summary'
+          )
+        }
+      } catch (parseError) {
+        console.error('Error parsing moderator summary JSON:', parseError)
+      }
+
+      useDebateStore.getState().addTokensUsed(tokensUsed)
+      await updateCredits(tokensUsed)
+      setActiveAgent(null)
+      return true
     } catch (error) {
-      console.error('Error during agent turn:', error)
-      setStatus('paused')
+      console.error('Error during summary round:', error)
+      setActiveAgent(null)
+      return false
     }
-  }, [setActiveAgent, setStatus, setIsUserTurn, runModeratorSummary, saveMessageToDb])
+  }, [setActiveAgent, saveMessageToDb, updateCredits])
+
+  // Execute ESCALATION round - moderator heats up discussion
+  const executeEscalationRound = useCallback(async (): Promise<boolean> => {
+    const store = useDebateStore.getState()
+
+    setActiveAgent(moderator)
+
+    // Get recent messages for context (exclude summaries)
+    const recentMessages = store.messages
+      .filter(m => m.roundType !== 'summary')
+      .slice(-DEFAULT_ROUND_CONFIG.statementContextSize)
+    const debateHistory = recentMessages
+      .map(m => `**${m.agentName}** said: "${m.content}"`)
+      .join('\n\n')
+
+    const systemPrompt = getEscalationSystemPrompt(store.language)
+    const apiMessages = [
+      {
+        role: 'user' as const,
+        content: `DEBATE TOPIC: "${store.topic}"\n\n---\nRECENT DEBATE:\n\n${debateHistory}\n\n---\nAs a moderator, stimulate the discussion with provocative questions.`
+      }
+    ]
+
+    try {
+      const result = await streamChatWithUsage(
+        {
+          model: moderator.model,
+          messages: apiMessages,
+          systemPrompt,
+        },
+        (chunk) => {
+          useDebateStore.getState().appendStreamingContent(chunk)
+        }
+      )
+
+      const inputTokens = result.usage?.promptTokens ?? 0
+      const outputTokens = result.usage?.completionTokens ?? 0
+      const reasoningTokens = result.usage?.reasoningTokens ?? 0
+      const tokensUsed = result.usage?.totalTokens ?? (inputTokens + outputTokens + reasoningTokens)
+
+      // Add message manually with roundType
+      const finalContent = result.content || useDebateStore.getState().currentStreamingContent || ''
+      useDebateStore.getState().addMessage({
+        agentId: moderator.id,
+        agentName: moderator.name,
+        agentColor: moderator.color,
+        agentModel: moderator.model,
+        content: finalContent,
+        tokensUsed,
+        roundType: 'escalation',
+      })
+      useDebateStore.setState({ currentStreamingContent: '' })
+      useDebateStore.getState().addTokensUsed(tokensUsed)
+
+      // Save to Firestore
+      const promptText = JSON.stringify(apiMessages, null, 2)
+      await saveMessageToDb(
+        moderator.id,
+        moderator.name,
+        moderator.color,
+        moderator.model,
+        finalContent,
+        tokensUsed,
+        inputTokens,
+        outputTokens,
+        reasoningTokens,
+        promptText,
+        systemPrompt,
+        'escalation'
+      )
+
+      await updateCredits(tokensUsed)
+      setActiveAgent(null)
+      return true
+    } catch (error) {
+      console.error('Error during escalation round:', error)
+      setActiveAgent(null)
+      return false
+    }
+  }, [setActiveAgent, saveMessageToDb, updateCredits])
+
+  // Execute FINAL_SUMMARY round - moderator wraps up debate
+  const executeFinalSummaryRound = useCallback(async (): Promise<boolean> => {
+    const store = useDebateStore.getState()
+
+    // Check if already finished
+    const lastMessage = store.messages[store.messages.length - 1]
+    if (lastMessage && lastMessage.agentId === 'moderator' && lastMessage.roundType === 'final_summary') {
+      setStatus('finished')
+      setActiveAgent(null)
+      return false
+    }
+
+    setActiveAgent(moderator)
+
+    // Build full debate history
+    const debateHistory = store.messages
+      .filter(m => m.roundType !== 'summary') // Include escalations but not summaries
+      .map(m => `**${m.agentName}** said: "${m.content}"`)
+      .join('\n\n')
+
+    const langInstruction = LANGUAGE_INSTRUCTIONS[store.language]
+    const systemPrompt = getFinalSummarySystemPrompt(moderator.persona, store.language)
+    const apiMessages = [
+      {
+        role: 'user' as const,
+        content: `DEBATE TOPIC: "${store.topic}"\n\nLANGUAGE: Respond in ${store.language === 'en' ? 'English' : 'Polish'} (${langInstruction})\n\n---\nFULL DEBATE TRANSCRIPT:\n\n${debateHistory}\n\n---\nPlease provide a summary of this debate.`
+      }
+    ]
+
+    try {
+      const result = await streamChatWithUsage(
+        {
+          model: moderator.model,
+          messages: apiMessages,
+          systemPrompt,
+        },
+        (chunk) => {
+          useDebateStore.getState().appendStreamingContent(chunk)
+        }
+      )
+
+      const inputTokens = result.usage?.promptTokens ?? 0
+      const outputTokens = result.usage?.completionTokens ?? 0
+      const reasoningTokens = result.usage?.reasoningTokens ?? 0
+      const tokensUsed = result.usage?.totalTokens ?? (inputTokens + outputTokens + reasoningTokens)
+      const finalContent = result.content || useDebateStore.getState().currentStreamingContent || ''
+
+      // Add message manually with roundType
+      useDebateStore.getState().addMessage({
+        agentId: moderator.id,
+        agentName: moderator.name,
+        agentColor: moderator.color,
+        agentModel: moderator.model,
+        content: finalContent,
+        tokensUsed,
+        roundType: 'final_summary',
+      })
+      useDebateStore.setState({ currentStreamingContent: '' })
+      useDebateStore.getState().addTokensUsed(tokensUsed)
+
+      // Save to Firestore
+      const promptText = JSON.stringify(apiMessages, null, 2)
+      await saveMessageToDb(
+        moderator.id,
+        moderator.name,
+        moderator.color,
+        moderator.model,
+        finalContent,
+        tokensUsed,
+        inputTokens,
+        outputTokens,
+        reasoningTokens,
+        promptText,
+        systemPrompt,
+        'final_summary'
+      )
+
+      // Update debate status
+      const currentDebateId = useDebateStore.getState().debateId
+      if (currentDebateId) {
+        await updateDebate(currentDebateId, { status: 'finished' })
+      }
+
+      await updateCredits(tokensUsed)
+      setStatus('finished')
+      setActiveAgent(null)
+      return true
+    } catch (error) {
+      console.error('Error during final summary:', error)
+
+      // Try to save partial content
+      const partialContent = useDebateStore.getState().currentStreamingContent || ''
+      if (partialContent.trim().length > 0) {
+        const errorContent = partialContent + '\n\n[Summary was interrupted due to an error]'
+        useDebateStore.getState().addMessage({
+          agentId: moderator.id,
+          agentName: moderator.name,
+          agentColor: moderator.color,
+          agentModel: moderator.model,
+          content: errorContent,
+          roundType: 'final_summary',
+        })
+        useDebateStore.setState({ currentStreamingContent: '' })
+        await saveMessageToDb(
+          moderator.id,
+          moderator.name,
+          moderator.color,
+          moderator.model,
+          errorContent,
+          0, 0, 0, 0,
+          JSON.stringify(apiMessages, null, 2),
+          systemPrompt,
+          'final_summary'
+        )
+        const currentDebateId = useDebateStore.getState().debateId
+        if (currentDebateId) {
+          await updateDebate(currentDebateId, { status: 'finished' })
+        }
+        setStatus('finished')
+      } else {
+        setStatus('paused')
+      }
+      setActiveAgent(null)
+      return false
+    }
+  }, [setActiveAgent, setStatus, saveMessageToDb, updateCredits])
+
+  // ============================================
+  // MAIN DEBATE LOOP
+  // ============================================
+
+  const runDebateLoop = useCallback(async () => {
+    const store = useDebateStore.getState()
+    if (store.status !== 'running') return
+
+    // Check if we've reached max rounds
+    if (store.roundCount >= store.maxRounds) {
+      await executeFinalSummaryRound()
+      return
+    }
+
+    // Check if moderator already provided final summary
+    const lastMessage = store.messages[store.messages.length - 1]
+    if (lastMessage && lastMessage.agentId === 'moderator' && lastMessage.roundType === 'final_summary') {
+      setStatus('finished')
+      setActiveAgent(null)
+      return
+    }
+
+    // Execute statement round
+    const statementSuccess = await executeStatementRound()
+    if (!statementSuccess) return // User turn or error
+
+    // Check if we need moderator rounds after this statement
+    const currentStore = useDebateStore.getState()
+    const statementCount = countStatements(currentStore.messages)
+
+    if (shouldRunModeratorRound(statementCount)) {
+      // Run summary
+      await executeSummaryRound()
+
+      // Check if we also need escalation
+      if (shouldRunEscalation(statementCount)) {
+        await executeEscalationRound()
+      }
+    }
+
+    // Check again if we've reached max rounds after this turn
+    const storeAfterRounds = useDebateStore.getState()
+    if (storeAfterRounds.roundCount >= storeAfterRounds.maxRounds) {
+      await executeFinalSummaryRound()
+      return
+    }
+
+    // Schedule next loop iteration
+    if (storeAfterRounds.status === 'running') {
+      setTimeout(() => {
+        runDebateLoop()
+      }, 1500)
+    }
+  }, [
+    setActiveAgent,
+    setStatus,
+    executeStatementRound,
+    executeSummaryRound,
+    executeEscalationRound,
+    executeFinalSummaryRound
+  ])
 
   // Handle user submitting their message
   const handleUserSubmit = useCallback(async (content: string) => {
     if (!content.trim()) return
-    
+
     const store = useDebateStore.getState()
     const userAgent = createUserAgent(store.userName)
-    
+
     submitUserMessage(content)
     incrementRound()
     setActiveAgent(null)
-    
+
     // Update debate roundCount in Firestore
-    const currentStore = useDebateStore.getState()
-    if (currentStore.debateId) {
+    const storeAfterSubmit = useDebateStore.getState()
+    if (storeAfterSubmit.debateId) {
       try {
-        await updateDebate(currentStore.debateId, { roundCount: currentStore.roundCount })
+        await updateDebate(storeAfterSubmit.debateId, { roundCount: storeAfterSubmit.roundCount })
       } catch (error) {
         console.error('Error updating debate roundCount:', error)
       }
     }
-    
+
     // Save user message to Firestore
     try {
       await saveMessageToDb(
@@ -509,70 +680,80 @@ CRITICAL RULES:
         userAgent.color,
         userAgent.model,
         content,
-        0, // User messages don't use tokens
-        0, // inputTokens
-        0, // outputTokens
-        0  // reasoningTokens
+        0, 0, 0, 0,
+        undefined,
+        undefined,
+        'statement'
       )
     } catch (error) {
       console.error('Error saving user message to Firestore:', error)
     }
-    
-    // Continue debate after user's turn
-    setTimeout(() => {
-      const state = useDebateStore.getState()
-      if (state.status === 'running' && state.roundCount < state.maxRounds) {
-        runAgentTurn()
-      } else if (state.status === 'running' && state.roundCount >= state.maxRounds) {
-        runModeratorSummary()
+
+    // Check if we need moderator rounds after user message
+    const storeAfterSave = useDebateStore.getState()
+    const statementCount = countStatements(storeAfterSave.messages)
+
+    if (shouldRunModeratorRound(statementCount)) {
+      await executeSummaryRound()
+      if (shouldRunEscalation(statementCount)) {
+        await executeEscalationRound()
       }
-    }, 1000)
-  }, [submitUserMessage, incrementRound, setActiveAgent, runAgentTurn, runModeratorSummary, saveMessageToDb])
+    }
+
+    // Continue debate
+    const stateAfterMod = useDebateStore.getState()
+    if (stateAfterMod.roundCount >= stateAfterMod.maxRounds) {
+      await executeFinalSummaryRound()
+    } else if (stateAfterMod.status === 'running') {
+      setTimeout(() => {
+        runDebateLoop()
+      }, 1000)
+    }
+  }, [
+    submitUserMessage,
+    incrementRound,
+    setActiveAgent,
+    saveMessageToDb,
+    executeSummaryRound,
+    executeEscalationRound,
+    executeFinalSummaryRound,
+    runDebateLoop
+  ])
 
   const startDebate = useCallback(async (): Promise<boolean> => {
     const store = useDebateStore.getState()
     if (!store.topic.trim()) return false
-    
-    // Check minimum 2 debaters selected
-    const selectedCount = store.selectedAgentIds.length > 0 
-      ? store.selectedAgentIds.length 
+
+    const selectedCount = store.selectedAgentIds.length > 0
+      ? store.selectedAgentIds.length
       : agents.filter(a => a.active).length
-    
+
     if (selectedCount < 2) {
       console.error('Cannot start debate: minimum 2 debaters required')
       return false
     }
-    
-    // Get user ID from auth store
+
     const authStore = useAuthStore.getState()
     if (!authStore.user) {
       console.error('Cannot start debate: user not authenticated')
       return false
     }
 
-    // Check if user has credits
     const hasCredits = (authStore.profile?.creditsAvailable ?? 0) > 0
     if (!hasCredits) {
-      // Return false to indicate credits check failed
-      // The component will handle showing the modal
       return false
     }
 
     try {
-      // Get selected avatars from database and convert to agents
       const avatarStore = useAvatarStore.getState()
       const allAvatars = avatarStore.getVisibleAvatars()
       const selectedAvatars = store.selectedAgentIds.length > 0
         ? allAvatars.filter(avatar => store.selectedAgentIds.includes(avatar.id) && !avatar.isModerator)
         : []
-      
-      // Convert avatars to agents
+
       const selectedAgents = avatarsToAgents(selectedAvatars)
-      
-      // Add moderator (always included)
       const allAgents = [...selectedAgents, moderator]
-      
-      // Create debate in Firestore
+
       const debate = await createDebate(
         authStore.user.uid,
         store.topic,
@@ -580,26 +761,21 @@ CRITICAL RULES:
         store.language,
         store.maxRounds
       )
-      
-      // Set debate ID in store
+
       setDebateId(debate.id)
-      
-      // Now start the debate
       setStatus('running')
-      runAgentTurn()
+      runDebateLoop()
       return true
     } catch (error) {
       console.error('Error creating debate:', error)
-      // Don't start debate if creation failed
       return false
     }
-  }, [runAgentTurn, setStatus, setDebateId])
+  }, [runDebateLoop, setStatus, setDebateId])
 
   const pauseDebate = useCallback(async () => {
     const store = useDebateStore.getState()
     setStatus('paused')
-    
-    // Update status in Firestore
+
     if (store.debateId) {
       try {
         await updateDebate(store.debateId, { status: 'paused' })
@@ -611,36 +787,29 @@ CRITICAL RULES:
 
   const resumeDebate = useCallback(() => {
     const store = useDebateStore.getState()
-    
-    // Don't resume if debate is already finished
-    if (store.status === 'finished') {
-      return
-    }
-    
-    // Check if moderator already provided summary
+
+    if (store.status === 'finished') return
+
     const lastMessage = store.messages[store.messages.length - 1]
-    if (lastMessage && lastMessage.agentId === 'moderator') {
+    if (lastMessage && lastMessage.agentId === 'moderator' && lastMessage.roundType === 'final_summary') {
       setStatus('finished')
       return
     }
-    
-    // Remove any incomplete streaming messages
+
+    // Remove incomplete streaming messages
     const messages = store.messages
     const lastMsg = messages[messages.length - 1]
     if (lastMsg && lastMsg.isStreaming && lastMsg.content === '') {
-      // Remove the incomplete message
-      const newMessages = messages.slice(0, -1)
-      useDebateStore.setState({ messages: newMessages })
+      useDebateStore.setState({ messages: messages.slice(0, -1) })
     }
-    
+
     setStatus('running')
-    runAgentTurn()
-  }, [runAgentTurn, setStatus])
+    runDebateLoop()
+  }, [runDebateLoop, setStatus])
 
   const resetDebate = useCallback(async () => {
     const store = useDebateStore.getState()
-    
-    // Update debate status to finished in Firestore before resetting
+
     if (store.debateId) {
       try {
         await updateDebate(store.debateId, { status: 'finished' })
@@ -648,7 +817,7 @@ CRITICAL RULES:
         console.error('Error updating debate status:', error)
       }
     }
-    
+
     reset()
   }, [reset])
 
@@ -658,17 +827,14 @@ CRITICAL RULES:
     if (!authStore.user) return
 
     const store = useDebateStore.getState()
-    // Don't load if we already have a debate loaded
     if (store.debateId && store.messages.length > 0) return
 
     try {
       const debate = await getActiveDebate(authStore.user.uid)
       if (!debate) return
 
-      // Load messages
       const messages = await getMessages(debate.id)
 
-      // Convert DebateMessage[] to Message[]
       const convertedMessages = messages.map((msg: DebateMessage) => ({
         id: msg.id,
         agentId: msg.avatarId,
@@ -678,17 +844,16 @@ CRITICAL RULES:
         content: msg.content,
         timestamp: msg.timestamp,
         tokensUsed: msg.tokensUsed,
+        roundType: msg.roundType,
       }))
 
-      // Restore state - clear first to avoid duplicates
       store.reset()
       store.setDebateId(debate.id)
       store.setTopic(debate.title)
       store.setLanguage(debate.language)
       store.setMaxRounds(debate.maxRounds)
       store.setStatus(debate.status)
-      
-      // Set messages
+
       convertedMessages.forEach(msg => {
         store.addMessage({
           agentId: msg.agentId,
@@ -697,24 +862,20 @@ CRITICAL RULES:
           agentModel: msg.agentModel,
           content: msg.content,
           tokensUsed: msg.tokensUsed,
+          roundType: msg.roundType,
         })
       })
 
-      // Set roundCount
       store.setRoundCount(debate.roundCount)
 
-      // Restore selected agent IDs from avatarsSnapshot (exclude moderator and user)
       const selectedIds = debate.avatarsSnapshot
         .filter(snapshot => snapshot.avatarId && snapshot.avatarId !== 'moderator' && snapshot.avatarId !== 'user')
         .map(snapshot => snapshot.avatarId!)
       store.setSelectedAgentIds(selectedIds)
-
-      // Don't auto-continue debates - user must manually resume
-      // This prevents debates from continuing after pause/reset
     } catch (error) {
       console.error('Error loading debate:', error)
     }
-  }, [runAgentTurn])
+  }, [])
 
   return {
     // State
@@ -729,7 +890,7 @@ CRITICAL RULES:
     userName,
     handRaised,
     isUserTurn,
-    
+
     // Actions
     setTopic,
     setMaxRounds,

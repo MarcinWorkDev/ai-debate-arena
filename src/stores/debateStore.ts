@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Agent } from '../lib/agents'
+import type { RoundType, ModeratorSummaryData } from '../lib/roundTypes'
 
 export interface Message {
   id: string
@@ -11,6 +12,7 @@ export interface Message {
   timestamp: number
   tokensUsed?: number
   isStreaming?: boolean
+  roundType?: RoundType // Round type: 'statement' | 'summary' | 'escalation' | 'final_summary'
 }
 
 export type DebateStatus = 'idle' | 'running' | 'paused' | 'finished'
@@ -40,6 +42,9 @@ interface DebateState {
   // Selected debaters
   selectedAgentIds: string[]
 
+  // Moderator summary
+  moderatorSummary: ModeratorSummaryData | null
+
   // Actions
   setDebateId: (id: string | null) => void
   setTopic: (topic: string) => void
@@ -65,6 +70,9 @@ interface DebateState {
   // Debaters selection
   setSelectedAgentIds: (ids: string[]) => void
   toggleAgentSelection: (agentId: string) => void
+
+  // Moderator summary
+  setModeratorSummary: (summary: ModeratorSummaryData | null) => void
 }
 
 export const useDebateStore = create<DebateState>((set, get) => ({
@@ -90,6 +98,9 @@ export const useDebateStore = create<DebateState>((set, get) => ({
 
   // Selected debaters (will be populated when avatars are loaded from Firestore)
   selectedAgentIds: [],
+
+  // Moderator summary
+  moderatorSummary: null,
 
   // Actions
   setDebateId: (id) => set({ debateId: id }),
@@ -184,6 +195,7 @@ export const useDebateStore = create<DebateState>((set, get) => ({
       handRaised: false,
       isUserTurn: false,
       selectedAgentIds: [],
+      moderatorSummary: null,
     })
   },
   
@@ -231,4 +243,7 @@ export const useDebateStore = create<DebateState>((set, get) => ({
       }
     }
   },
+
+  // Moderator summary
+  setModeratorSummary: (summary) => set({ moderatorSummary: summary }),
 }))

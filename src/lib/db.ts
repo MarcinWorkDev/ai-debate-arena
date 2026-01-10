@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore'
 import { db } from './firebase'
 import type { Agent } from './agents'
+import type { RoundType } from './roundTypes'
 
 // ============================================
 // Types
@@ -61,6 +62,9 @@ export interface DebateMessage {
   outputTokens: number // Completion/output tokens
   reasoningTokens: number // Reasoning tokens (if applicable)
   parentMessageId: string | null
+  prompt?: string // User prompt/messages sent to API (for debugging)
+  systemPrompt?: string // System prompt sent to API (for debugging)
+  roundType?: RoundType // Round type: 'statement' | 'summary' | 'escalation' | 'final_summary'
 }
 
 // ============================================
