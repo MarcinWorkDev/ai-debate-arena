@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Agent } from '../lib/agents'
+import { agents } from '../lib/agents'
 
 export interface Message {
   id: string
@@ -37,6 +38,9 @@ interface DebateState {
   handRaised: boolean
   isUserTurn: boolean
 
+  // Selected debaters
+  selectedAgentIds: string[]
+
   // Actions
   setDebateId: (id: string | null) => void
   setTopic: (topic: string) => void
@@ -58,6 +62,10 @@ interface DebateState {
   toggleHandRaised: () => void
   setIsUserTurn: (isTurn: boolean) => void
   submitUserMessage: (content: string) => void
+
+  // Debaters selection
+  setSelectedAgentIds: (ids: string[]) => void
+  toggleAgentSelection: (agentId: string) => void
 }
 
 export const useDebateStore = create<DebateState>((set, get) => ({
@@ -80,6 +88,9 @@ export const useDebateStore = create<DebateState>((set, get) => ({
   userName: 'You',
   handRaised: false,
   isUserTurn: false,
+
+  // Selected debaters (default to active agents)
+  selectedAgentIds: agents.filter(a => a.active).map(a => a.id),
 
   // Actions
   setDebateId: (id) => set({ debateId: id }),
@@ -141,20 +152,25 @@ export const useDebateStore = create<DebateState>((set, get) => ({
   incrementRound: () =>
     set((state) => ({ roundCount: state.roundCount + 1 })),
 
-  reset: () => set({
-    debateId: null,
-    topic: '',
-    language: 'en',
-    messages: [],
-    activeAgent: null,
-    status: 'idle',
-    currentStreamingContent: '',
-    roundCount: 0,
-    tokensUsedInSession: 0,
-    creditsUsedInSession: 0,
-    handRaised: false,
-    isUserTurn: false,
-  }),
+  reset: () => {
+    // Reset to default selected agents (active ones)
+    const defaultSelectedIds = agents.filter(a => a.active).map(a => a.id)
+    set({
+      debateId: null,
+      topic: '',
+      language: 'en',
+      messages: [],
+      activeAgent: null,
+      status: 'idle',
+      currentStreamingContent: '',
+      roundCount: 0,
+      tokensUsedInSession: 0,
+      creditsUsedInSession: 0,
+      handRaised: false,
+      isUserTurn: false,
+      selectedAgentIds: defaultSelectedIds,
+    })
+  },
   
   // User actions
   setUserName: (name) => set({ userName: name }),
@@ -179,5 +195,25 @@ export const useDebateStore = create<DebateState>((set, get) => ({
       isUserTurn: false,
       handRaised: false, // reset hand after speaking
     }))
+  },
+
+  // Debaters selection
+  setSelectedAgentIds: (ids) => set({ selectedAgentIds: ids }),
+  
+  toggleAgentSelection: (agentId) => {
+    const state = get()
+    const isSelected = state.selectedAgentIds.includes(agentId)
+    
+    if (isSelected) {
+      // Remove from selection (but keep minimum 2)
+      if (state.selectedAgentIds.length > 2) {
+        set({ selectedAgentIds: state.selectedAgentIds.filter(id => id !== agentId) })
+      }
+    } else {
+      // Add to selection (max 10)
+      if (state.selectedAgentIds.length < 10) {
+        set({ selectedAgentIds: [...state.selectedAgentIds, agentId] })
+      }
+    }
   },
 }))

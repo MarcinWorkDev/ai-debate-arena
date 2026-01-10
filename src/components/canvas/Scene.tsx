@@ -4,15 +4,28 @@ import { EffectComposer, Bloom, Vignette, SMAA } from '@react-three/postprocessi
 import { RoundTable } from './RoundTable'
 import { AgentAvatar } from './AgentAvatar'
 import { Environment } from './Environment'
-import { getAllParticipantsWithUser } from '../../lib/agents'
+import { allAvailableAgents, moderator, createUserAgent, calculatePositionsForAgents } from '../../lib/agents'
 import { useDebateStore } from '../../stores/debateStore'
 
 export function Scene() {
   const activeAgent = useDebateStore((state) => state.activeAgent)
   const userName = useDebateStore((state) => state.userName)
+  const selectedAgentIds = useDebateStore((state) => state.selectedAgentIds)
   
-  // Get all participants including user
-  const participants = getAllParticipantsWithUser(userName)
+  // Get selected agents or default to active agents
+  let selectedAgents = selectedAgentIds.length > 0
+    ? allAvailableAgents.filter(agent => selectedAgentIds.includes(agent.id))
+    : allAvailableAgents.filter(agent => agent.active)
+  
+  // Recalculate positions for selected agents dynamically
+  selectedAgents = calculatePositionsForAgents(selectedAgents)
+  
+  // Get all participants: selected agents + moderator + user
+  const participants = [
+    ...selectedAgents,
+    moderator,
+    createUserAgent(userName)
+  ]
 
   return (
     <div className="absolute inset-0 z-0">

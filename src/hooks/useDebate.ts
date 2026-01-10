@@ -1,7 +1,7 @@
-import { useCallback, useRef } from 'react'
+import { useCallback } from 'react'
 import { useDebateStore } from '../stores/debateStore'
 import { useAuthStore } from '../stores/authStore'
-import { agents, selectNextSpeaker, moderator, createUserAgent } from '../lib/agents'
+import { agents, selectNextSpeaker, moderator, createUserAgent, allAvailableAgents } from '../lib/agents'
 import { streamChatWithUsage } from '../lib/api'
 import { updateUserCredits, createDebate, addMessage as addMessageToDb, updateDebate, addCreditsToDebate, getActiveDebate, getMessages } from '../lib/db'
 import type { DebateMessage } from '../lib/db'
@@ -46,8 +46,6 @@ export function useDebate() {
     submitUserMessage,
   } = useDebateStore()
 
-  const abortControllerRef = useRef<AbortController | null>(null)
-
   // Save message to Firestore
   const saveMessageToDb = useCallback(async (
     agentId: string,
@@ -55,7 +53,10 @@ export function useDebate() {
     agentColor: string,
     agentModel: string,
     content: string,
-    tokensUsed: number
+    tokensUsed: number,
+    inputTokens?: number,
+    outputTokens?: number,
+    reasoningTokens?: number
   ) => {
     const store = useDebateStore.getState()
     if (!store.debateId) return
@@ -69,6 +70,9 @@ export function useDebate() {
         content,
         timestamp: Date.now(),
         tokensUsed,
+        inputTokens: inputTokens ?? 0,
+        outputTokens: outputTokens ?? 0,
+        reasoningTokens: reasoningTokens ?? 0,
         parentMessageId: null,
       })
     } catch (error) {
@@ -83,6 +87,15 @@ export function useDebate() {
     // Make sure we're still in a valid state to summarize
     if (store.status !== 'running') {
       setStatus('finished')
+      return
+    }
+
+    // Check if moderator already provided summary (last message is from moderator)
+    const lastMessage = store.messages[store.messages.length - 1]
+    if (lastMessage && lastMessage.agentId === 'moderator') {
+      console.log('Moderator summary already provided, finishing debate')
+      setStatus('finished')
+      setActiveAgent(null)
       return
     }
 
@@ -102,6 +115,16 @@ export function useDebate() {
     ]
 
     try {
+      // Initialize streaming message
+      useDebateStore.getState().addMessage({
+        agentId: moderator.id,
+        agentName: moderator.name,
+        agentColor: moderator.color,
+        agentModel: moderator.model,
+        content: '',
+        isStreaming: true,
+      })
+
       const result = await streamChatWithUsage(
         {
           model: moderator.model,
@@ -112,8 +135,54 @@ Your task:
 1. Summarize the key arguments from each participant
 2. Identify main points of agreement and disagreement
 3. Provide a balanced conclusion
-4. Keep it concise but comprehensive (3-5 short sentences)
-5. ${langInstruction}`
+
+CRITICAL: Format your summary using structured Markdown - DO NOT write plain text with just bold/italics. Use proper structure:
+
+## Required Structure:
+
+### Use Section Headings (## or ###)
+Organize your summary with clear sections like:
+- ## Key Arguments
+- ## Points of Agreement
+- ## Points of Disagreement  
+- ## Conclusion
+
+### Use Lists Extensively
+- Use bullet lists (-) for arguments, points, examples
+- Use numbered lists (1.) for sequences or priorities
+- Nest lists when needed (indent with 2 spaces)
+
+### Use Tables When Appropriate
+For comparing positions or summarizing multiple participants:
+| Participant | Key Argument | Position |
+|------------|-------------|----------|
+| Name | Argument | For/Against |
+
+### Use Formatting Elements
+- **Bold** for key concepts and conclusions
+- *Italics* for participant names or emphasis
+- Inline code (backticks) for technical terms if needed
+
+### Structure Example:
+## Summary
+
+### Key Arguments
+- **Participant A**: [argument]
+- **Participant B**: [argument]
+
+### Agreement Points
+1. Point 1
+2. Point 2
+
+### Disagreement Points
+- Issue 1: [description]
+- Issue 2: [description]
+
+## Conclusion
+[Your balanced conclusion]
+
+Make it visually structured and easy to scan - NOT a wall of text!
+${langInstruction}`
         },
         (chunk) => {
           useDebateStore.getState().appendStreamingContent(chunk)
@@ -121,17 +190,27 @@ Your task:
       )
 
       const tokensUsed = result.usage?.totalTokens || 0
+      const finalContent = result.content || useDebateStore.getState().currentStreamingContent || ''
+      
+      // Finalize message with content
       useDebateStore.getState().finalizeMessage(tokensUsed)
       useDebateStore.getState().addTokensUsed(tokensUsed)
 
       // Save to Firestore
+      const inputTokens = result.usage?.promptTokens ?? 0
+      const outputTokens = result.usage?.completionTokens ?? 0
+      const reasoningTokens = result.usage?.reasoningTokens ?? 0
+      
       await saveMessageToDb(
         moderator.id,
         moderator.name,
         moderator.color,
         moderator.model,
-        result.content,
-        tokensUsed
+        finalContent,
+        tokensUsed,
+        inputTokens,
+        outputTokens,
+        reasoningTokens
       )
 
       // Update debate credits and status in Firestore
@@ -158,11 +237,54 @@ Your task:
           })
         }
       }
-    } catch (error) {
-      console.error('Error during moderator summary:', error)
-    } finally {
+
+      // Success - mark as finished
       setStatus('finished')
       setActiveAgent(null)
+    } catch (error) {
+      console.error('Error during moderator summary:', error)
+      
+      // Try to save partial content if available
+      const store = useDebateStore.getState()
+      const partialContent = store.currentStreamingContent || ''
+      
+      if (partialContent.trim().length > 0) {
+        console.log('Saving partial moderator summary due to error')
+        try {
+          // Finalize the partial message
+          useDebateStore.getState().finalizeMessage(0)
+          
+          // Save partial content to Firestore
+          await saveMessageToDb(
+            moderator.id,
+            moderator.name,
+            moderator.color,
+            moderator.model,
+            partialContent + '\n\n[Summary was interrupted due to an error]',
+            0,
+            0,
+            0,
+            0
+          )
+          
+          // Update debate status
+          const currentDebateId = store.debateId
+          if (currentDebateId) {
+            await updateDebate(currentDebateId, { status: 'finished' })
+          }
+          
+          setStatus('finished')
+          setActiveAgent(null)
+          return
+        } catch (saveError) {
+          console.error('Error saving partial summary:', saveError)
+        }
+      }
+      
+      // If we couldn't save partial content, pause the debate so user can retry
+      setStatus('paused')
+      setActiveAgent(null)
+      console.log('Moderator summary failed, debate paused. User can resume to retry.')
     }
   }, [setActiveAgent, setStatus, saveMessageToDb])
 
@@ -170,6 +292,22 @@ Your task:
     const store = useDebateStore.getState()
 
     if (store.status !== 'running') return
+    
+    // Check if moderator already provided summary (in DB or in local state)
+    const lastMessage = store.messages[store.messages.length - 1]
+    if (lastMessage && lastMessage.agentId === 'moderator') {
+      console.log('Moderator summary already provided, finishing debate')
+      setStatus('finished')
+      setActiveAgent(null)
+      return
+    }
+    
+    // Check if moderator is currently streaming (partial content)
+    if (store.activeAgent?.id === 'moderator' && store.currentStreamingContent) {
+      console.log('Moderator is already streaming, waiting...')
+      return
+    }
+    
     if (store.roundCount >= store.maxRounds) {
       // All rounds done - call moderator for summary
       await runModeratorSummary()
@@ -180,7 +318,12 @@ Your task:
       ? store.messages[store.messages.length - 1].agentId
       : null
 
-    const nextSpeaker = selectNextSpeaker(lastSpeakerId, store.handRaised)
+    // Get selected agents for this debate
+    const selectedAgents = store.selectedAgentIds.length > 0
+      ? allAvailableAgents.filter(agent => store.selectedAgentIds.includes(agent.id))
+      : agents
+
+    const nextSpeaker = selectNextSpeaker(lastSpeakerId, store.handRaised, selectedAgents)
 
     // If it's user's turn, wait for their input
     if (nextSpeaker === 'user') {
@@ -249,13 +392,20 @@ CRITICAL RULES:
 
         // Save to Firestore
         const store = useDebateStore.getState()
+        const inputTokens = result.usage?.promptTokens ?? 0
+        const outputTokens = result.usage?.completionTokens ?? 0
+        const reasoningTokens = result.usage?.reasoningTokens ?? 0
+        
         await saveMessageToDb(
           nextAgent.id,
           nextAgent.name,
           nextAgent.color,
           nextAgent.model,
           result.content,
-          tokensUsed
+          tokensUsed,
+          inputTokens,
+          outputTokens,
+          reasoningTokens
         )
 
         // Update debate roundCount and credits in Firestore
@@ -342,7 +492,10 @@ CRITICAL RULES:
         userAgent.color,
         userAgent.model,
         content,
-        0 // User messages don't use tokens
+        0, // User messages don't use tokens
+        0, // inputTokens
+        0, // outputTokens
+        0  // reasoningTokens
       )
     } catch (error) {
       console.error('Error saving user message to Firestore:', error)
@@ -363,6 +516,16 @@ CRITICAL RULES:
     const store = useDebateStore.getState()
     if (!store.topic.trim()) return false
     
+    // Check minimum 2 debaters selected
+    const selectedCount = store.selectedAgentIds.length > 0 
+      ? store.selectedAgentIds.length 
+      : agents.filter(a => a.active).length
+    
+    if (selectedCount < 2) {
+      console.error('Cannot start debate: minimum 2 debaters required')
+      return false
+    }
+    
     // Get user ID from auth store
     const authStore = useAuthStore.getState()
     if (!authStore.user) {
@@ -379,9 +542,19 @@ CRITICAL RULES:
     }
 
     try {
-      // Get all active agents (AI agents + moderator)
-      // User agent is added dynamically if they participate
-      const allAgents = [...agents, moderator]
+      // Get selected agents or default to active agents
+      let selectedAgents: typeof allAvailableAgents = []
+      if (store.selectedAgentIds.length > 0) {
+        selectedAgents = allAvailableAgents.filter(agent => 
+          store.selectedAgentIds.includes(agent.id)
+        )
+      } else {
+        // Default to active agents if none selected
+        selectedAgents = agents
+      }
+      
+      // Add moderator (always included)
+      const allAgents = [...selectedAgents, moderator]
       
       // Create debate in Firestore
       const debate = await createDebate(
@@ -418,13 +591,34 @@ CRITICAL RULES:
         console.error('Error updating debate status:', error)
       }
     }
-    
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
   }, [setStatus])
 
   const resumeDebate = useCallback(() => {
+    const store = useDebateStore.getState()
+    
+    // Don't resume if debate is already finished
+    if (store.status === 'finished') {
+      console.log('Cannot resume finished debate')
+      return
+    }
+    
+    // Check if moderator already provided summary
+    const lastMessage = store.messages[store.messages.length - 1]
+    if (lastMessage && lastMessage.agentId === 'moderator') {
+      console.log('Moderator summary already provided, cannot resume')
+      setStatus('finished')
+      return
+    }
+    
+    // Remove any incomplete streaming messages
+    const messages = store.messages
+    const lastMsg = messages[messages.length - 1]
+    if (lastMsg && lastMsg.isStreaming && lastMsg.content === '') {
+      // Remove the incomplete message
+      const newMessages = messages.slice(0, -1)
+      useDebateStore.setState({ messages: newMessages })
+    }
+    
     setStatus('running')
     runAgentTurn()
   }, [runAgentTurn, setStatus])
@@ -441,9 +635,6 @@ CRITICAL RULES:
       }
     }
     
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
     reset()
   }, [reset])
 

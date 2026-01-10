@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { getAllDebates, type Debate } from '../../lib/db'
 
 export function AdminDebateList() {
@@ -45,24 +46,46 @@ export function AdminDebateList() {
           {debates.map((debate) => (
             <tr key={debate.id} className="hover:bg-slate-800/30">
               <td className="px-4 py-4">
-                <div className="text-white font-medium truncate max-w-xs">{debate.title}</div>
-                <div className="text-slate-500 text-xs font-mono">{debate.id}</div>
+                <Link
+                  to={`/debate/${debate.id}`}
+                  className="block"
+                >
+                  <div className="text-white font-medium truncate max-w-xs hover:text-blue-400 transition-colors">{debate.title}</div>
+                  <div className="text-slate-500 text-xs font-mono">{debate.id}</div>
+                </Link>
               </td>
               <td className="px-4 py-4">
-                <div className="text-slate-400 text-sm font-mono truncate max-w-[120px]">{debate.userId}</div>
+                <Link
+                  to={`/debate/${debate.id}`}
+                  className="block"
+                >
+                  <div className="text-slate-400 text-sm font-mono truncate max-w-[120px] hover:text-blue-400 transition-colors">{debate.userId}</div>
+                </Link>
               </td>
               <td className="px-4 py-4">
-                <span className={`px-2 py-1 text-xs rounded-full ${
-                  debate.status === 'finished'
-                    ? 'bg-green-500/20 text-green-400'
-                    : debate.status === 'running'
-                    ? 'bg-blue-500/20 text-blue-400'
-                    : 'bg-slate-500/20 text-slate-400'
-                }`}>
-                  {debate.status}
-                </span>
+                <Link
+                  to={`/debate/${debate.id}`}
+                  className="block"
+                >
+                  <span className={`px-2 py-1 text-xs rounded-full ${
+                    debate.status === 'finished'
+                      ? 'bg-green-500/20 text-green-400'
+                      : debate.status === 'running'
+                      ? 'bg-blue-500/20 text-blue-400'
+                      : 'bg-slate-500/20 text-slate-400'
+                  }`}>
+                    {debate.status}
+                  </span>
+                </Link>
               </td>
-              <td className="px-4 py-4 text-white">{debate.creditsUsed}</td>
+              <td className="px-4 py-4">
+                <Link
+                  to={`/debate/${debate.id}`}
+                  className="block text-white hover:text-blue-400 transition-colors"
+                >
+                  {debate.creditsUsed}
+                </Link>
+              </td>
               <td className="px-4 py-4">
                 {debate.isPublic ? (
                   <a
@@ -70,15 +93,26 @@ export function AdminDebateList() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-400 hover:text-blue-300 text-sm"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     {debate.publicSlug}
                   </a>
                 ) : (
-                  <span className="text-slate-500 text-sm">Private</span>
+                  <Link
+                    to={`/debate/${debate.id}`}
+                    className="block text-slate-500 text-sm hover:text-blue-400 transition-colors"
+                  >
+                    Private
+                  </Link>
                 )}
               </td>
-              <td className="px-4 py-4 text-slate-400 text-sm">
-                {debate.createdAt.toLocaleDateString()}
+              <td className="px-4 py-4">
+                <Link
+                  to={`/debate/${debate.id}`}
+                  className="block text-slate-400 text-sm hover:text-blue-400 transition-colors"
+                >
+                  {debate.createdAt.toLocaleDateString()}
+                </Link>
               </td>
             </tr>
           ))}

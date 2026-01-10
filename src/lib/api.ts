@@ -13,6 +13,7 @@ export interface TokenUsage {
   promptTokens: number
   completionTokens: number
   totalTokens: number
+  reasoningTokens?: number // Reasoning tokens (if applicable)
 }
 
 export interface StreamResult {
@@ -21,62 +22,139 @@ export interface StreamResult {
 }
 
 const API_URL = 'http://localhost:3001'
+const REQUEST_TIMEOUT = 130000 // 2 minutes 10 seconds (slightly longer than server timeout)
+const STREAM_INACTIVITY_TIMEOUT = 70000 // 70 seconds (slightly longer than server stream timeout)
 
 // Streaming chat with usage tracking
 export async function streamChatWithUsage(
   request: ChatRequest,
   onChunk: (chunk: string) => void
 ): Promise<StreamResult> {
-  const response = await fetch(`${API_URL}/api/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-  })
+  const startTime = Date.now()
+  
+  // Create AbortController for timeout
+  const abortController = new AbortController()
+  const timeoutId = setTimeout(() => {
+    console.error('⏱️ Request timeout on frontend after', REQUEST_TIMEOUT, 'ms')
+    abortController.abort()
+  }, REQUEST_TIMEOUT)
+  
+  let response: Response
+  try {
+    response = await fetch(`${API_URL}/api/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+      signal: abortController.signal,
+    })
+  } catch (error) {
+    clearTimeout(timeoutId)
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timeout - server took too long to respond')
+    }
+    console.error('Network error:', error)
+    throw new Error(`Failed to connect to server: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
 
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`)
+    clearTimeout(timeoutId)
+    const errorText = await response.text().catch(() => 'Unknown error')
+    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`)
   }
 
   const reader = response.body?.getReader()
   if (!reader) {
-    throw new Error('No response body')
+    clearTimeout(timeoutId)
+    throw new Error('No response body - server returned empty response')
   }
 
   const decoder = new TextDecoder()
   let fullContent = ''
   let usage: TokenUsage | null = null
+  let hasReceivedData = false
+  let streamInactivityTimeout: ReturnType<typeof setTimeout> | null = null
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+  // Reset stream inactivity timeout
+  const resetStreamTimeout = () => {
+    if (streamInactivityTimeout) clearTimeout(streamInactivityTimeout)
+    streamInactivityTimeout = setTimeout(() => {
+      console.error('⏱️ Stream inactivity timeout on frontend after', STREAM_INACTIVITY_TIMEOUT, 'ms')
+      reader.cancel()
+      abortController.abort()
+    }, STREAM_INACTIVITY_TIMEOUT)
+  }
+  
+  resetStreamTimeout() // Start timeout
 
-    const chunk = decoder.decode(value, { stream: true })
-    const lines = chunk.split('\n')
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6)
-        if (data === '[DONE]') {
-          return { content: fullContent, usage }
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        if (!hasReceivedData && fullContent === '') {
+          clearTimeout(timeoutId)
+          if (streamInactivityTimeout) clearTimeout(streamInactivityTimeout)
+          throw new Error('Server closed connection without sending any data')
         }
-        try {
-          const parsed = JSON.parse(data)
-          if (parsed.content) {
-            fullContent += parsed.content
-            onChunk(parsed.content)
+        break
+      }
+
+      hasReceivedData = true
+      resetStreamTimeout() // Reset timeout on each chunk
+      
+      const chunk = decoder.decode(value, { stream: true })
+      const lines = chunk.split('\n')
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6)
+          if (data === '[DONE]') {
+            clearTimeout(timeoutId)
+            if (streamInactivityTimeout) clearTimeout(streamInactivityTimeout)
+            console.log('✅ Stream completed, duration:', Date.now() - startTime, 'ms')
+            return { content: fullContent, usage }
           }
-          if (parsed.usage) {
-            usage = parsed.usage
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.error) {
+              clearTimeout(timeoutId)
+              if (streamInactivityTimeout) clearTimeout(streamInactivityTimeout)
+              throw new Error(`Server error: ${parsed.error}`)
+            }
+            if (parsed.content) {
+              fullContent += parsed.content
+              onChunk(parsed.content)
+            }
+            if (parsed.usage) {
+              usage = parsed.usage
+            }
+          } catch (parseError) {
+            // If it's a JSON parse error, ignore (partial chunk)
+            // But if it's an error from the server, re-throw
+            if (parseError instanceof Error && parseError.message.startsWith('Server error:')) {
+              clearTimeout(timeoutId)
+              if (streamInactivityTimeout) clearTimeout(streamInactivityTimeout)
+              throw parseError
+            }
           }
-        } catch {
-          // Ignore parse errors for partial chunks
         }
       }
     }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    if (streamInactivityTimeout) clearTimeout(streamInactivityTimeout)
+    console.error('Error reading stream:', error, 'duration:', Date.now() - startTime, 'ms')
+    // If we have partial content, return it
+    if (fullContent.length > 0) {
+      console.log('⚠️ Returning partial content due to error')
+      return { content: fullContent, usage }
+    }
+    throw error
   }
 
+  clearTimeout(timeoutId)
+  if (streamInactivityTimeout) clearTimeout(streamInactivityTimeout)
   return { content: fullContent, usage }
 }
 

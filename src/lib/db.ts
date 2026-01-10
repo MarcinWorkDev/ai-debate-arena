@@ -56,7 +56,10 @@ export interface DebateMessage {
   avatarModel: string
   content: string
   timestamp: number
-  tokensUsed: number
+  tokensUsed: number // Total tokens (for backwards compatibility)
+  inputTokens: number // Prompt/input tokens
+  outputTokens: number // Completion/output tokens
+  reasoningTokens: number // Reasoning tokens (if applicable)
   parentMessageId: string | null
 }
 
@@ -318,10 +321,17 @@ export async function getMessages(debateId: string): Promise<DebateMessage[]> {
   const q = query(messagesRef, orderBy('timestamp', 'asc'))
 
   const snapshot = await getDocs(q)
-  return snapshot.docs.map(docSnap => ({
-    id: docSnap.id,
-    ...docSnap.data() as Omit<DebateMessage, 'id'>,
-  }))
+  return snapshot.docs.map(docSnap => {
+    const data = docSnap.data()
+    return {
+      id: docSnap.id,
+      ...data,
+      tokensUsed: data.tokensUsed || 0,
+      inputTokens: data.inputTokens ?? data.tokensUsed ?? 0,
+      outputTokens: data.outputTokens ?? 0,
+      reasoningTokens: data.reasoningTokens ?? 0,
+    } as DebateMessage
+  })
 }
 
 export async function getReplies(
