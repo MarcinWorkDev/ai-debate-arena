@@ -24,8 +24,8 @@ const corsOptions = {
 app.use(cors(corsOptions))
 app.use(express.json())
 
-// Serve static files from dist directory (frontend build)
-const distPath = path.join(__dirname, '..', 'dist')
+// Serve static files from dist/client directory (frontend build)
+const distPath = path.join(__dirname, '..', 'dist', 'client')
 app.use(express.static(distPath))
 
 // Initialize Firebase Admin
