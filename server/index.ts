@@ -2,17 +2,86 @@ import express from 'express'
 import cors from 'cors'
 import { createOpenAI } from '@ai-sdk/openai'
 import { streamText } from 'ai'
+import admin from 'firebase-admin'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import 'dotenv/config'
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
 const app = express()
-const PORT = 3001
+const PORT = process.env.PORT || 3001
 
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
+// CORS configuration - allow all origins in production (Cloud Run)
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' 
+    ? true // Allow all origins in production
+    : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
   credentials: true
-}))
+}
 
+app.use(cors(corsOptions))
 app.use(express.json())
+
+// Serve static files from dist directory (frontend build)
+const distPath = path.join(__dirname, '..', 'dist')
+app.use(express.static(distPath))
+
+// Initialize Firebase Admin
+if (!admin.apps.length) {
+  try {
+    // Try to initialize with service account if available
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      })
+      console.log('✅ Firebase Admin initialized with service account')
+    } else if (process.env.FIREBASE_PROJECT_ID) {
+      // Initialize with project ID (for emulator or default credentials)
+      admin.initializeApp({
+        projectId: process.env.FIREBASE_PROJECT_ID
+      })
+      console.log('✅ Firebase Admin initialized with project ID')
+    } else {
+      console.warn('⚠️ Firebase Admin not initialized - no credentials found')
+    }
+  } catch (error) {
+    console.error('❌ Error initializing Firebase Admin:', error)
+  }
+}
+
+// Middleware to verify Firebase token
+interface AuthenticatedRequest extends express.Request {
+  user?: admin.auth.DecodedIdToken
+}
+
+const verifyToken = async (req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing or invalid authorization header' })
+    }
+
+    const token = authHeader.split('Bearer ')[1]
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Missing token' })
+    }
+
+    // Verify the token
+    const decodedToken = await admin.auth().verifyIdToken(token)
+    req.user = decodedToken
+    
+    console.log('✅ Token verified for user:', decodedToken.uid, decodedToken.email)
+    next()
+  } catch (error) {
+    console.error('❌ Token verification failed:', error)
+    return res.status(401).json({ error: 'Invalid or expired token' })
+  }
+}
 
 // OpenAI client
 const openai = createOpenAI({
@@ -25,7 +94,7 @@ interface ChatRequest {
   systemPrompt: string
 }
 
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', verifyToken, async (req, res) => {
   let headersSent = false
   let responseClosed = false
   const REQUEST_TIMEOUT = 120000 // 2 minutes timeout for entire request
@@ -70,10 +139,13 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     const { model, messages, systemPrompt } = req.body as ChatRequest
+    const authenticatedReq = req as AuthenticatedRequest
+    const userId = authenticatedReq.user?.uid
 
     console.log('📨 Request received:', { 
       model, 
       messageCount: messages.length,
+      userId,
       timestamp: new Date().toISOString()
     })
 
@@ -367,7 +439,20 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
+// API routes should be before the catch-all route
+// All API routes are already defined above
+
+// Catch-all handler: send back React's index.html file for SPA routing
+app.get('*', (req, res) => {
+  // Don't serve index.html for API routes
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'Not found' })
+  }
+  res.sendFile(path.join(distPath, 'index.html'))
+})
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`)
+  console.log(`🚀 Server running on port ${PORT}`)
   console.log(`📡 OpenAI API: ${process.env.OPENAI_API_KEY ? 'configured' : 'NOT configured'}`)
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`)
 })

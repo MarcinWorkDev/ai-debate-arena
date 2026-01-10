@@ -21,9 +21,29 @@ export interface StreamResult {
   usage: TokenUsage | null
 }
 
-const API_URL = 'http://localhost:3001'
+// Use relative URL in production (same origin), absolute URL in development
+const API_URL = import.meta.env.PROD 
+  ? '' // Empty string means same origin (backend serves frontend)
+  : 'http://localhost:3001'
 const REQUEST_TIMEOUT = 130000 // 2 minutes 10 seconds (slightly longer than server timeout)
 const STREAM_INACTIVITY_TIMEOUT = 70000 // 70 seconds (slightly longer than server stream timeout)
+
+// Helper function to get Firebase auth token
+async function getAuthToken(): Promise<string | null> {
+  try {
+    const { auth } = await import('./firebase')
+    const currentUser = auth.currentUser
+    if (!currentUser) {
+      console.warn('⚠️ No authenticated user found')
+      return null
+    }
+    const token = await currentUser.getIdToken()
+    return token
+  } catch (error) {
+    console.error('❌ Error getting auth token:', error)
+    return null
+  }
+}
 
 // Streaming chat with usage tracking
 export async function streamChatWithUsage(
@@ -31,6 +51,12 @@ export async function streamChatWithUsage(
   onChunk: (chunk: string) => void
 ): Promise<StreamResult> {
   const startTime = Date.now()
+  
+  // Get auth token
+  const token = await getAuthToken()
+  if (!token) {
+    throw new Error('Authentication required - please sign in')
+  }
   
   // Create AbortController for timeout
   const abortController = new AbortController()
@@ -45,6 +71,7 @@ export async function streamChatWithUsage(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(request),
       signal: abortController.signal,
@@ -61,6 +88,9 @@ export async function streamChatWithUsage(
   if (!response.ok) {
     clearTimeout(timeoutId)
     const errorText = await response.text().catch(() => 'Unknown error')
+    if (response.status === 401) {
+      throw new Error('Authentication failed - please sign in again')
+    }
     throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`)
   }
 
