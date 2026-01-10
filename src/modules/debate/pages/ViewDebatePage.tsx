@@ -143,7 +143,7 @@ export function ViewDebatePage() {
             <h2 className="text-2xl font-bold text-white mb-4">
               {debate.language === 'pl' ? 'Przebieg debaty' : 'Debate Transcript'}
             </h2>
-            <DebateMessageList messages={messages} showTokens={true} />
+            <DebateMessageList messages={messages} showTokens={true} isAdmin={profile?.isAdmin ?? false} />
           </section>
         </div>
       </main>

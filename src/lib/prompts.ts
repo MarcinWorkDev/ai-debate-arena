@@ -28,13 +28,13 @@ export function getStatementSystemPrompt(
     moderatorSummarySection = `
 
 DEBATE STATE (updated by moderator):
-- Core disagreements:
+### Core disagreements:
 ${format(moderatorSummary.core_disagreements)}
-- Tentative agreements:
+### Tentative agreements:
 ${format(moderatorSummary.points_of_tentative_agreement)}
-- Repeated arguments to avoid:
+### Repeated arguments to avoid:
 ${format(moderatorSummary.arguments_repeated_too_often)}
-- Missing angles to explore:
+### Missing angles to explore:
 ${format(moderatorSummary.missing_or_underexplored_angles)}`
   }
 
