@@ -370,19 +370,26 @@ app.post('/api/chat', verifyToken, async (req, res) => {
     try {
       console.log('📊 Waiting for usage stats...', { timestamp: new Date().toISOString() })
       const usagePromise = result.usage
-      const timeoutPromise = new Promise((_, reject) => 
+      const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Usage stats timeout')), 10000)
       )
       
-      const usage = await Promise.race([usagePromise, timeoutPromise])
+      const usage = await Promise.race([usagePromise, timeoutPromise]) as {
+        promptTokens?: number
+        completionTokens?: number
+        totalTokens?: number
+        reasoningTokens?: number
+        reasoningTokensUsed?: number
+      } | null
+      
       console.log(`✅ Stream finished: ${chunkCount} chunks sent, tokens:`, usage, 'total duration:', Date.now() - streamStartTime, 'ms')
 
       // Send usage info before [DONE]
       const usageData = {
-        promptTokens: (usage as any)?.promptTokens ?? 0,
-        completionTokens: (usage as any)?.completionTokens ?? 0,
-        totalTokens: (usage as any)?.totalTokens ?? usage?.totalTokens ?? 0,
-        reasoningTokens: (usage as any)?.reasoningTokens ?? (usage as any)?.reasoningTokensUsed ?? 0
+        promptTokens: usage?.promptTokens ?? 0,
+        completionTokens: usage?.completionTokens ?? 0,
+        totalTokens: usage?.totalTokens ?? 0,
+        reasoningTokens: usage?.reasoningTokens ?? usage?.reasoningTokensUsed ?? 0
       }
       
       if (safeWrite(`data: ${JSON.stringify({ usage: usageData })}\n\n`)) {
