@@ -5,6 +5,7 @@ import { streamText } from 'ai'
 import admin from 'firebase-admin'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import fs from 'fs'
 import 'dotenv/config'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -26,7 +27,12 @@ app.use(express.json())
 
 // Serve static files from dist/client directory (frontend build)
 const distPath = path.join(__dirname, '..', 'dist', 'client')
-app.use(express.static(distPath))
+console.log('📁 Static files path:', distPath)
+// Serve static files, but don't serve index.html automatically (we'll handle it in catch-all)
+app.use(express.static(distPath, { 
+  index: false, // Don't serve index.html automatically
+  fallthrough: true // Continue to next middleware if file not found
+}))
 
 // Initialize Firebase Admin
 if (!admin.apps.length) {
@@ -455,7 +461,17 @@ app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'Not found' })
   }
-  res.sendFile(path.join(distPath, 'index.html'))
+  
+  const indexPath = path.join(distPath, 'index.html')
+  console.log('📄 Serving index.html for path:', req.path, 'from:', indexPath)
+  
+  // Check if file exists before sending
+  if (!fs.existsSync(indexPath)) {
+    console.error('❌ index.html not found at:', indexPath)
+    return res.status(500).json({ error: 'Frontend build not found' })
+  }
+  
+  res.sendFile(indexPath)
 })
 
 app.listen(PORT, () => {
