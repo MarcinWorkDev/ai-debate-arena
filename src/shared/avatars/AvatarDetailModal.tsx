@@ -471,10 +471,72 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
 
           {/* Actions */}
           <div className="p-6 border-t border-slate-800 flex flex-wrap gap-2">
-            {isAdmin ? (
+            {/* Owner actions (shown if user is owner, regardless of admin status) */}
+            {isOwner && (
               <>
-                {/* Admin actions: only Edit and Block/Unblock */}
                 {canEdit && (
+                  <button
+                    onClick={() => setShowEditForm(true)}
+                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors"
+                  >
+                    Edit
+                  </button>
+                )}
+                {canPromote && (
+                  <button
+                    onClick={() => setShowPromotionWarning(true)}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors"
+                  >
+                    Promote to Public
+                  </button>
+                )}
+                {canRequestUnblock && !showUnblockForm && (
+                  <button
+                    onClick={() => setShowUnblockForm(true)}
+                    className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded-lg transition-colors"
+                  >
+                    Request Unblock
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    onClick={handleDelete}
+                    disabled={actionLoading}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* Regular user actions (for public avatars - shown to everyone including admins) */}
+            {avatar?.visibility === 'public' && (
+              <>
+                {canSuggestChanges && (
+                  <button
+                    onClick={() => setShowSuggestionForm(true)}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors"
+                  >
+                    Suggest Changes
+                  </button>
+                )}
+                {canFork && (
+                  <button
+                    onClick={() => setShowForkConfirm(true)}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm rounded-lg transition-colors"
+                  >
+                    Fork to Private
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* Admin actions (shown if user is admin) */}
+            {isAdmin && (
+              <>
+                {/* Admin can edit any avatar (if not already shown as owner) */}
+                {!isOwner && canEdit && (
                   <button
                     onClick={() => setShowEditForm(true)}
                     className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors"
@@ -497,59 +559,6 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
                     className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
                   >
                     {actionLoading ? 'Unblocking...' : 'Unblock'}
-                  </button>
-                )}
-              </>
-            ) : (
-              <>
-                {/* Regular user actions */}
-                {canEdit && (
-                  <button
-                    onClick={() => setShowEditForm(true)}
-                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors"
-                  >
-                    Edit
-                  </button>
-                )}
-                {canPromote && (
-                  <button
-                    onClick={() => setShowPromotionWarning(true)}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors"
-                  >
-                    Promote to Public
-                  </button>
-                )}
-                {canSuggestChanges && (
-                  <button
-                    onClick={() => setShowSuggestionForm(true)}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors"
-                  >
-                    Suggest Changes
-                  </button>
-                )}
-                {canFork && (
-                  <button
-                    onClick={() => setShowForkConfirm(true)}
-                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm rounded-lg transition-colors"
-                  >
-                    Fork to Private
-                  </button>
-                )}
-                {canRequestUnblock && !showUnblockForm && (
-                  <button
-                    onClick={() => setShowUnblockForm(true)}
-                    className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded-lg transition-colors"
-                  >
-                    Request Unblock
-                  </button>
-                )}
-                {canDelete && (
-                  <button
-                    onClick={handleDelete}
-                    disabled={actionLoading}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    Delete
                   </button>
                 )}
               </>
