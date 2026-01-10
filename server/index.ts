@@ -26,8 +26,11 @@ app.use(cors(corsOptions))
 app.use(express.json())
 
 // Serve static files from dist/client directory (frontend build)
-const distPath = path.join(__dirname, '..', 'dist', 'client')
+// Use process.cwd() to get the app root directory (works in Docker)
+const distPath = path.join(process.cwd(), 'dist', 'client')
 console.log('📁 Static files path:', distPath)
+console.log('📁 Current working directory:', process.cwd())
+console.log('📁 __dirname:', __dirname)
 // Serve static files, but don't serve index.html automatically (we'll handle it in catch-all)
 app.use(express.static(distPath, { 
   index: false, // Don't serve index.html automatically
