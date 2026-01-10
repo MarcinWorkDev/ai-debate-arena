@@ -141,7 +141,6 @@ export async function streamChatWithUsage(
           if (data === '[DONE]') {
             clearTimeout(timeoutId)
             if (streamInactivityTimeout) clearTimeout(streamInactivityTimeout)
-            console.log('🏁 Stream done, returning usage:', usage)
             return { content: fullContent, usage }
           }
           try {
@@ -156,14 +155,6 @@ export async function streamChatWithUsage(
               onChunk(parsed.content)
             }
             if (parsed.usage) {
-              console.log('📥 Received usage data from server (raw):', parsed.usage)
-              console.log('📥 Received usage data types:', {
-                promptTokens: { value: parsed.usage.promptTokens, type: typeof parsed.usage.promptTokens },
-                completionTokens: { value: parsed.usage.completionTokens, type: typeof parsed.usage.completionTokens },
-                totalTokens: { value: parsed.usage.totalTokens, type: typeof parsed.usage.totalTokens },
-                reasoningTokens: { value: parsed.usage.reasoningTokens, type: typeof parsed.usage.reasoningTokens },
-              })
-              
               // Ensure all values are numbers
               usage = {
                 promptTokens: typeof parsed.usage.promptTokens === 'number' ? parsed.usage.promptTokens : 0,
@@ -171,13 +162,6 @@ export async function streamChatWithUsage(
                 totalTokens: typeof parsed.usage.totalTokens === 'number' ? parsed.usage.totalTokens : 0,
                 reasoningTokens: typeof parsed.usage.reasoningTokens === 'number' ? parsed.usage.reasoningTokens : 0,
               }
-              console.log('✅ Parsed usage (final):', usage)
-              console.log('✅ Parsed usage types:', {
-                promptTokens: typeof usage.promptTokens,
-                completionTokens: typeof usage.completionTokens,
-                totalTokens: typeof usage.totalTokens,
-                reasoningTokens: typeof usage.reasoningTokens,
-              })
             }
           } catch (parseError) {
             // If it's a JSON parse error, ignore (partial chunk)

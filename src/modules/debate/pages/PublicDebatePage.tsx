@@ -82,10 +82,55 @@ export function PublicDebatePage() {
         isPublic={true}
       />
 
-      {/* Messages - Scrollable */}
+      {/* Content - Scrollable */}
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <DebateMessageList messages={messages} showTokens={false} />
+        <div className="max-w-4xl mx-auto px-4 py-6 space-y-8">
+          {/* Participants Section */}
+          {debate.avatarsSnapshot && debate.avatarsSnapshot.length > 0 && (
+            <section className="space-y-4">
+              <h2 className="text-2xl font-bold text-white mb-4">
+                {debate.language === 'pl' ? 'Uczestnicy' : 'Participants'}
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                {debate.avatarsSnapshot
+                  .filter(avatar => !avatar.isModerator)
+                  .map((avatar, index) => (
+                    <div
+                      key={avatar.avatarId || `avatar-${index}`}
+                      className="bg-slate-800 rounded-lg p-4 border border-slate-700"
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div
+                          className="w-4 h-4 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: avatar.color }}
+                        />
+                        <h3 className="text-lg font-semibold text-white">
+                          {avatar.name}
+                        </h3>
+                        {avatar.isHuman && (
+                          <span className="text-xs text-slate-400 bg-slate-700 px-2 py-1 rounded">
+                            {debate.language === 'pl' ? 'Użytkownik' : 'User'}
+                          </span>
+                        )}
+                      </div>
+                      {avatar.persona && (
+                        <p className="text-sm text-slate-300 leading-relaxed">
+                          {avatar.persona}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            </section>
+          )}
+
+          {/* Messages Section */}
+          <section className="space-y-4">
+            <h2 className="text-2xl font-bold text-white mb-4">
+              {debate.language === 'pl' ? 'Przebieg debaty' : 'Debate Transcript'}
+            </h2>
+            <DebateMessageList messages={messages} showTokens={false} />
+          </section>
         </div>
       </main>
     </div>

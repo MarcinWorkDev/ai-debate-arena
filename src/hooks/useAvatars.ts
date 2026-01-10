@@ -297,7 +297,6 @@ export function useAvatars() {
       const needsMigration = await avatarDb.checkMigrationNeeded()
       if (needsMigration) {
         await avatarDb.migrateHardcodedAgents()
-        console.log('Avatar migration completed')
       }
       store.setMigrationComplete(true)
     } catch (err) {

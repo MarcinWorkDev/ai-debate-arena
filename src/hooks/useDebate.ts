@@ -82,19 +82,6 @@ export function useDebate() {
       parentMessageId: null,
     }
 
-    // Log what we're saving with detailed info
-    console.log('💾 Saving message to Firestore:', {
-      debateId: store.debateId,
-      agentName,
-      tokensUsed: messageData.tokensUsed,
-      inputTokens: messageData.inputTokens,
-      outputTokens: messageData.outputTokens,
-      reasoningTokens: messageData.reasoningTokens,
-      rawInputs: { tokensUsed, inputTokens, outputTokens, reasoningTokens },
-      messageDataKeys: Object.keys(messageData),
-      messageDataValues: Object.values(messageData),
-    })
-
     try {
       await addMessageToDb(store.debateId, messageData)
     } catch (error) {
@@ -131,7 +118,7 @@ export function useDebate() {
     const apiMessages = [
       {
         role: 'user' as const,
-        content: `DEBATE TOPIC: "${store.topic}"\n\n---\nFULL DEBATE TRANSCRIPT:\n\n${debateHistory}\n\n---\nPlease provide a summary of this debate.`
+        content: `DEBATE TOPIC: "${store.topic}"\n\nLANGUAGE: Respond in ${store.language === 'en' ? 'English' : 'Polish'} (${langInstruction})\n\n---\nFULL DEBATE TRANSCRIPT:\n\n${debateHistory}\n\n---\nPlease provide a summary of this debate.`
       }
     ]
 
@@ -219,17 +206,6 @@ ${langInstruction}`
       const reasoningTokens = result.usage?.reasoningTokens ?? 0
       const tokensUsed = result.usage?.totalTokens ?? (inputTokens + outputTokens + reasoningTokens)
       const finalContent = result.content || useDebateStore.getState().currentStreamingContent || ''
-      
-      // Log token usage for debugging
-      if (tokensUsed > 0 || inputTokens > 0 || outputTokens > 0 || reasoningTokens > 0) {
-        console.log('Moderator token usage:', {
-          total: tokensUsed,
-          input: inputTokens,
-          output: outputTokens,
-          reasoning: reasoningTokens,
-          usage: result.usage
-        })
-      }
       
       // Finalize message with content
       useDebateStore.getState().finalizeMessage(tokensUsed)
@@ -421,9 +397,6 @@ CRITICAL RULES:
 
       const currentStatus = useDebateStore.getState().status
       if (currentStatus === 'running') {
-        // Log raw result.usage first
-        console.log('🔍 Raw result.usage:', result.usage)
-        
         // Extract token usage with proper defaults
         // Map API field names to database field names:
         // - promptTokens (from API) -> inputTokens (in DB)
@@ -432,16 +405,6 @@ CRITICAL RULES:
         const outputTokens = result.usage?.completionTokens ?? 0
         const reasoningTokens = result.usage?.reasoningTokens ?? 0
         const tokensUsed = result.usage?.totalTokens ?? (inputTokens + outputTokens + reasoningTokens)
-        
-        // Log token usage for debugging
-        console.log('📊 Extracted token usage:', {
-          total: tokensUsed,
-          input: inputTokens,
-          output: outputTokens,
-          reasoning: reasoningTokens,
-          rawUsage: result.usage,
-          hasUsage: !!result.usage
-        })
         
         useDebateStore.getState().finalizeMessage(tokensUsed)
         useDebateStore.getState().addTokensUsed(tokensUsed)

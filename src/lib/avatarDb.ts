@@ -818,7 +818,6 @@ export async function migrateHardcodedAgents(): Promise<void> {
   }
 
   await batch.commit()
-  console.log('Migration completed: hardcoded agents migrated to Firestore')
 }
 
 // Link migrated avatars to author when they log in
