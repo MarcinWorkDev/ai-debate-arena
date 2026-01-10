@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import { useDebateStore } from '../../stores/debateStore'
 import { useDebate } from '../../hooks/useDebate'
 import { MessageBubble } from './MessageBubble'
@@ -12,13 +12,24 @@ export function ChatPanel() {
   const { isUserTurn, handRaised, toggleHandRaised, handleUserSubmit } = useDebate()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [userInput, setUserInput] = useState('')
+  const scrollTimeoutRef = useRef<number | null>(null)
 
-  // Auto-scroll to bottom
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+  // Throttled auto-scroll to bottom to reduce CPU usage
+  const scrollToBottom = useCallback(() => {
+    if (scrollTimeoutRef.current) {
+      cancelAnimationFrame(scrollTimeoutRef.current)
     }
-  }, [messages, currentStreamingContent])
+    scrollTimeoutRef.current = requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      }
+    })
+  }, [])
+
+  // Auto-scroll to bottom (throttled)
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages.length, currentStreamingContent, scrollToBottom])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

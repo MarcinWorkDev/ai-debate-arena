@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Agent } from '../lib/agents'
-import type { RoundType, ModeratorSummaryData } from '../lib/roundTypes'
+import type { RoundType, ModeratorSummaryData, EscalationData } from '../lib/roundTypes'
 
 export interface Message {
   id: string
@@ -45,6 +45,9 @@ interface DebateState {
   // Moderator summary
   moderatorSummary: ModeratorSummaryData | null
 
+  // Escalation data (one-time use)
+  escalationData: EscalationData | null
+
   // Actions
   setDebateId: (id: string | null) => void
   setTopic: (topic: string) => void
@@ -73,6 +76,9 @@ interface DebateState {
 
   // Moderator summary
   setModeratorSummary: (summary: ModeratorSummaryData | null) => void
+
+  // Escalation data
+  setEscalationData: (escalation: EscalationData | null) => void
 }
 
 export const useDebateStore = create<DebateState>((set, get) => ({
@@ -102,6 +108,9 @@ export const useDebateStore = create<DebateState>((set, get) => ({
   // Moderator summary
   moderatorSummary: null,
 
+  // Escalation data
+  escalationData: null,
+
   // Actions
   setDebateId: (id) => set({ debateId: id }),
 
@@ -128,10 +137,32 @@ export const useDebateStore = create<DebateState>((set, get) => ({
 
   updateStreamingContent: (content) => set({ currentStreamingContent: content }),
 
-  appendStreamingContent: (chunk) =>
-    set((state) => ({
-      currentStreamingContent: state.currentStreamingContent + chunk
-    })),
+  appendStreamingContent: (() => {
+    // Throttle updates to reduce CPU usage during streaming
+    // Accumulate chunks and update at most every frame (~16ms) using requestAnimationFrame
+    let buffer = ''
+    let rafId: number | null = null
+    
+    const flush = () => {
+      if (buffer !== '') {
+        set({ currentStreamingContent: buffer })
+        buffer = ''
+      }
+      rafId = null
+    }
+    
+    return (chunk: string) => {
+      const state = get()
+      if (buffer === '') {
+        buffer = state.currentStreamingContent
+      }
+      buffer += chunk
+      
+      if (rafId === null) {
+        rafId = requestAnimationFrame(flush)
+      }
+    }
+  })(),
 
   finalizeMessage: (tokensUsed?: number) => {
     const { activeAgent, currentStreamingContent, messages } = get()
@@ -196,6 +227,7 @@ export const useDebateStore = create<DebateState>((set, get) => ({
       isUserTurn: false,
       selectedAgentIds: [],
       moderatorSummary: null,
+      escalationData: null,
     })
   },
   
@@ -246,4 +278,7 @@ export const useDebateStore = create<DebateState>((set, get) => ({
 
   // Moderator summary
   setModeratorSummary: (summary) => set({ moderatorSummary: summary }),
+
+  // Escalation data
+  setEscalationData: (escalation) => set({ escalationData: escalation }),
 }))

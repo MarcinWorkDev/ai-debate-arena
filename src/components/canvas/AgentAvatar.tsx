@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, memo } from 'react'
 import { Mesh, Group } from 'three'
 import { useFrame } from '@react-three/fiber'
 import { Html, RoundedBox } from '@react-three/drei'
@@ -11,7 +11,7 @@ interface AgentAvatarProps {
 }
 
 // Modern minimalist pedestal chair - positioned on ground
-function Chair({ color, isActive, isModerator }: { color: string; isActive: boolean; isModerator?: boolean }) {
+const Chair = memo(function Chair({ color, isActive, isModerator }: { color: string; isActive: boolean; isModerator?: boolean }) {
   return (
     <group position={[0, -0.7, 0]}>
       {/* Chair seat - rounded rectangle */}
@@ -47,16 +47,22 @@ function Chair({ color, isActive, isModerator }: { color: string; isActive: bool
       </mesh>
     </group>
   )
-}
+})
 
 // Avatar with colored head and gray body
-function Avatar({ color, isActive, isModerator }: { color: string; isActive: boolean; isModerator?: boolean }) {
+const Avatar = memo(function Avatar({ color, isActive, isModerator }: { color: string; isActive: boolean; isModerator?: boolean }) {
   const headRef = useRef<Mesh>(null)
+  const lastUpdateRef = useRef(0)
 
   useFrame((state) => {
     if (headRef.current && isActive) {
-      headRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 1.5) * 0.1
-      headRef.current.rotation.x = Math.sin(state.clock.elapsedTime) * 0.04
+      // Throttle animation updates to ~30fps instead of 60fps
+      const now = state.clock.elapsedTime
+      if (now - lastUpdateRef.current > 0.033) {
+        headRef.current.rotation.y = Math.sin(now * 1.5) * 0.1
+        headRef.current.rotation.x = Math.sin(now) * 0.04
+        lastUpdateRef.current = now
+      }
     }
   })
 
@@ -134,9 +140,9 @@ function Avatar({ color, isActive, isModerator }: { color: string; isActive: boo
       ))}
     </group>
   )
-}
+})
 
-export function AgentAvatar({ agent, isActive }: AgentAvatarProps) {
+export const AgentAvatar = memo(function AgentAvatar({ agent, isActive }: AgentAvatarProps) {
   const groupRef = useRef<Group>(null)
   const isModerator = agent.isModerator
 
@@ -193,4 +199,13 @@ export function AgentAvatar({ agent, isActive }: AgentAvatarProps) {
       </Html>
     </animated.group>
   )
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison to prevent unnecessary re-renders
+  return (
+    prevProps.agent.id === nextProps.agent.id &&
+    prevProps.agent.position[0] === nextProps.agent.position[0] &&
+    prevProps.agent.position[2] === nextProps.agent.position[2] &&
+    prevProps.agent.rotation === nextProps.agent.rotation &&
+    prevProps.isActive === nextProps.isActive
+  )
+})

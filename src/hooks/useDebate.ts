@@ -2,11 +2,11 @@ import { useCallback } from 'react'
 import { useDebateStore } from '../stores/debateStore'
 import { useAuthStore } from '../stores/authStore'
 import { useAvatarStore } from '../stores/avatarStore'
-import { agents, selectNextSpeaker, moderator, createUserAgent, avatarsToAgents } from '../lib/agents'
+import { agents, selectNextSpeaker, moderator, createUserAgent, avatarsToAgents, type Agent } from '../lib/agents'
 import { streamChatWithUsage } from '../lib/api'
 import { updateUserCredits, createDebate, addMessage as addMessageToDb, updateDebate, addCreditsToDebate, getActiveDebate, getMessages } from '../lib/db'
 import type { DebateMessage } from '../lib/db'
-import type { RoundType, ModeratorSummaryData } from '../lib/roundTypes'
+import type { RoundType, ModeratorSummaryData, EscalationData } from '../lib/roundTypes'
 import {
   getStatementSystemPrompt,
   getSummarySystemPrompt,
@@ -158,7 +158,26 @@ export function useDebate() {
       : []
     const selectedAgents = avatarsToAgents(selectedAvatars)
 
-    const nextSpeaker = selectNextSpeaker(lastSpeakerId, store.handRaised, selectedAgents)
+    // Check if escalation data exists and try to find the target agent
+    let nextSpeaker: Agent | 'user'
+    let escalationDataToUse: EscalationData | null = null
+
+    if (store.escalationData) {
+      // Try to find agent by name (escalation_target)
+      const targetAgent = selectedAgents.find(agent => agent.name === store.escalationData!.escalation_target)
+      if (targetAgent) {
+        nextSpeaker = targetAgent
+        escalationDataToUse = store.escalationData
+      } else {
+        // Target not found, use standard selection
+        nextSpeaker = selectNextSpeaker(lastSpeakerId, store.handRaised, selectedAgents)
+      }
+      // Clear escalation data after use (one-time use)
+      useDebateStore.getState().setEscalationData(null)
+    } else {
+      // No escalation data, use standard selection
+      nextSpeaker = selectNextSpeaker(lastSpeakerId, store.handRaised, selectedAgents)
+    }
 
     // If it's user's turn, wait for input
     if (nextSpeaker === 'user') {
@@ -171,8 +190,8 @@ export function useDebate() {
     const nextAgent = nextSpeaker
     setActiveAgent(nextAgent)
 
-    // Build conversation history - filter out summaries (they're in systemPrompt), keep escalations
-    const participantMessages = store.messages.filter(m => m.roundType !== 'summary')
+    // Build conversation history - filter out summaries (they're in systemPrompt)
+    const participantMessages = store.messages.filter(m => m.roundType !== 'summary' && m.roundType !== 'escalation')
     const recentMessages = participantMessages.slice(-DEFAULT_ROUND_CONFIG.statementContextSize)
     const debateHistory = recentMessages
       .map(m => `**${m.agentName}** said: "${m.content}"`)
@@ -182,7 +201,8 @@ export function useDebate() {
       nextAgent.name,
       nextAgent.persona,
       store.language,
-      store.moderatorSummary
+      store.moderatorSummary,
+      escalationDataToUse // Pass escalation data (one-time use, already cleared if used)
     )
 
     const apiMessages = [
@@ -278,7 +298,7 @@ export function useDebate() {
     setActiveAgent(moderator)
 
     // Get recent messages for summary context (exclude previous summaries, keep escalations)
-    const allMessages = store.messages.filter(m => m.roundType !== 'summary')
+    const allMessages = store.messages.filter(m => m.roundType !== 'summary' && m.roundType !== 'escalation')
     const recentMessages = allMessages.slice(-DEFAULT_ROUND_CONFIG.summaryContextSize)
     const debateHistory = recentMessages
       .map(m => `**${m.agentName}** said: "${m.content}"`)
@@ -390,7 +410,7 @@ export function useDebate() {
 
     // Get recent messages for context (exclude summaries)
     const recentMessages = store.messages
-      .filter(m => m.roundType !== 'summary')
+      .filter(m => m.roundType !== 'summary' && m.roundType !== 'escalation')
       .slice(-DEFAULT_ROUND_CONFIG.statementContextSize)
     const debateHistory = recentMessages
       .map(m => `**${m.agentName}** said: "${m.content}"`)
@@ -411,47 +431,89 @@ export function useDebate() {
           messages: apiMessages,
           systemPrompt,
         },
-        (chunk) => {
-          useDebateStore.getState().appendStreamingContent(chunk)
-        }
+        () => {} // No streaming for escalation
       )
 
+      const content = result.content || ''
+
+      // Parse JSON from response
+      let jsonContent = content.trim()
+      if (jsonContent.startsWith('```')) {
+        const lines = jsonContent.split('\n')
+        const lastLine = lines[lines.length - 1]
+        if (lastLine === '```') {
+          jsonContent = lines.slice(1, -1).join('\n')
+        }
+      }
+      const jsonMatch = jsonContent.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        jsonContent = jsonMatch[0]
+      }
+
+      // Extract token usage
       const inputTokens = result.usage?.promptTokens ?? 0
       const outputTokens = result.usage?.completionTokens ?? 0
       const reasoningTokens = result.usage?.reasoningTokens ?? 0
       const tokensUsed = result.usage?.totalTokens ?? (inputTokens + outputTokens + reasoningTokens)
 
-      // Add message manually with roundType
-      const finalContent = result.content || useDebateStore.getState().currentStreamingContent || ''
-      useDebateStore.getState().addMessage({
-        agentId: moderator.id,
-        agentName: moderator.name,
-        agentColor: moderator.color,
-        agentModel: moderator.model,
-        content: finalContent,
-        tokensUsed,
-        roundType: 'escalation',
-      })
-      useDebateStore.setState({ currentStreamingContent: '' })
+      try {
+        const escalation = JSON.parse(jsonContent) as EscalationData
+
+        if (
+          escalation.escalation_target &&
+          escalation.assumption_to_challenge &&
+          escalation.why_problematic &&
+          escalation.instruction_to_participant
+        ) {
+          // Save to store
+          useDebateStore.getState().setEscalationData(escalation)
+
+          // Format as markdown for display
+          const escalationContent = `**Escalation Target:** ${escalation.escalation_target}\n\n**Assumption to Challenge:** ${escalation.assumption_to_challenge}\n\n**Why Problematic:** ${escalation.why_problematic}\n\n**Instruction:** ${escalation.instruction_to_participant}`
+
+          // Add escalation message (collapsible via roundType)
+          useDebateStore.getState().addMessage({
+            agentId: moderator.id,
+            agentName: moderator.name,
+            agentColor: moderator.color,
+            agentModel: moderator.model,
+            content: escalationContent,
+            roundType: 'escalation',
+            tokensUsed,
+          })
+
+          // Save to Firestore
+          const promptText = JSON.stringify(apiMessages, null, 2)
+          await saveMessageToDb(
+            moderator.id,
+            moderator.name,
+            moderator.color,
+            moderator.model,
+            escalationContent,
+            tokensUsed,
+            inputTokens,
+            outputTokens,
+            reasoningTokens,
+            promptText,
+            systemPrompt,
+            'escalation'
+          )
+        }
+      } catch (parseError) {
+        console.error('Error parsing escalation JSON:', parseError)
+        // Still add message with raw content for debugging
+        useDebateStore.getState().addMessage({
+          agentId: moderator.id,
+          agentName: moderator.name,
+          agentColor: moderator.color,
+          agentModel: moderator.model,
+          content: content,
+          tokensUsed,
+          roundType: 'escalation',
+        })
+      }
+
       useDebateStore.getState().addTokensUsed(tokensUsed)
-
-      // Save to Firestore
-      const promptText = JSON.stringify(apiMessages, null, 2)
-      await saveMessageToDb(
-        moderator.id,
-        moderator.name,
-        moderator.color,
-        moderator.model,
-        finalContent,
-        tokensUsed,
-        inputTokens,
-        outputTokens,
-        reasoningTokens,
-        promptText,
-        systemPrompt,
-        'escalation'
-      )
-
       await updateCredits(tokensUsed)
       setActiveAgent(null)
       return true

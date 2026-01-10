@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { motion } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -9,13 +9,13 @@ interface MessageBubbleProps {
   message: Message
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProps) {
   const language = useDebateStore((state) => state.language)
   const isModerator = message.agentId === 'moderator'
-  // Collapsible only for 'summary' roundType
-  // 'escalation' and 'final_summary' are NOT collapsible - they're visible as normal messages
-  const isCollapsible = message.roundType === 'summary'
-  const [isExpanded, setIsExpanded] = useState(false) // Collapsed by default for summaries
+  // Collapsible for 'summary' and 'escalation' roundTypes
+  // 'final_summary' is NOT collapsible - it's visible as normal message
+  const isCollapsible = message.roundType === 'summary' || message.roundType === 'escalation'
+  const [isExpanded, setIsExpanded] = useState(false) // Collapsed by default for summaries and escalations
   const isPl = language === 'pl'
   
   return (
@@ -58,14 +58,17 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       >
         {isCollapsible ? (
           <>
-            {/* Collapsible summary toggle */}
+            {/* Collapsible summary/escalation toggle */}
             <button
               onClick={() => setIsExpanded(!isExpanded)}
               className="w-full flex items-center gap-2 text-left hover:bg-slate-700/30 rounded px-1 py-0.5 -mx-1 transition-colors"
             >
               <span className="text-slate-500 text-xs">{isExpanded ? '▼' : '▶'}</span>
               <span className="text-sm text-slate-400">
-                {isPl ? '📊 Podsumowanie debaty' : '📊 Debate Summary'}
+                {message.roundType === 'escalation' 
+                  ? (isPl ? '🔥 Eskalacja debaty' : '🔥 Debate Escalation')
+                  : (isPl ? '📊 Podsumowanie debaty' : '📊 Debate Summary')
+                }
               </span>
               {!isExpanded && (
                 <span className="text-xs text-slate-500 ml-auto">
@@ -74,7 +77,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               )}
             </button>
 
-            {/* Summary content (collapsible) */}
+            {/* Summary/Escalation content (collapsible) */}
             {isExpanded && (
               <div className="mt-3 text-slate-200 text-base leading-relaxed prose prose-base prose-invert max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-1 prose-headings:text-slate-100 prose-headings:font-bold prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-strong:text-white prose-em:text-slate-300 prose-code:text-pink-400 prose-code:bg-slate-700 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-slate-800 prose-pre:border prose-pre:border-slate-700 prose-pre:rounded prose-pre:p-3 prose-pre:my-2 prose-hr:border-slate-700 prose-table:my-4 prose-table:w-full prose-table:border-collapse prose-th:border prose-th:border-slate-600 prose-th:bg-slate-800 prose-th:p-3 prose-th:text-left prose-th:font-semibold prose-th:text-slate-200 prose-td:border prose-td:border-slate-700 prose-td:p-3 prose-td:text-slate-300 prose-tr:hover:bg-slate-800/30">
                 <ReactMarkdown
@@ -154,4 +157,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       </div>
     </motion.div>
   )
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison to prevent unnecessary re-renders
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.content === nextProps.message.content &&
+    prevProps.message.isStreaming === nextProps.message.isStreaming
+  )
+})

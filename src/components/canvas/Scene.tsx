@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera, ContactShadows } from '@react-three/drei'
 import { EffectComposer, Bloom, Vignette, SMAA } from '@react-three/postprocessing'
@@ -16,26 +17,29 @@ export function Scene() {
   const getVisibleAvatars = useAvatarStore((state) => state.getVisibleAvatars)
   const { profile } = useAuth()
   
-  // Get all available avatars from database
-  const allAvatars = getVisibleAvatars()
-  
-  // Filter selected avatars (exclude moderators)
-  const selectedAvatars = selectedAgentIds.length > 0
-    ? allAvatars.filter(avatar => selectedAgentIds.includes(avatar.id) && !avatar.isModerator)
-    : []
-  
-  // Convert avatars to agents with calculated positions
-  const selectedAgents = avatarsToAgents(selectedAvatars)
-  
-  // Use profile displayName as default if userName is not set
-  const displayName = userName || profile?.displayName || 'You'
-  
-  // Get all participants: selected agents + moderator + user
-  const participants = [
-    ...selectedAgents,
-    moderator,
-    createUserAgent(displayName)
-  ]
+  // Memoize participants calculation to prevent recalculation on every render
+  const participants = useMemo(() => {
+    // Get all available avatars from database
+    const allAvatars = getVisibleAvatars()
+    
+    // Filter selected avatars (exclude moderators)
+    const selectedAvatars = selectedAgentIds.length > 0
+      ? allAvatars.filter(avatar => selectedAgentIds.includes(avatar.id) && !avatar.isModerator)
+      : []
+    
+    // Convert avatars to agents with calculated positions
+    const selectedAgents = avatarsToAgents(selectedAvatars)
+    
+    // Use profile displayName as default if userName is not set
+    const displayName = userName || profile?.displayName || 'You'
+    
+    // Get all participants: selected agents + moderator + user
+    return [
+      ...selectedAgents,
+      moderator,
+      createUserAgent(displayName)
+    ]
+  }, [selectedAgentIds, userName, profile?.displayName, getVisibleAvatars])
 
   return (
     <div className="absolute inset-0 z-0">
