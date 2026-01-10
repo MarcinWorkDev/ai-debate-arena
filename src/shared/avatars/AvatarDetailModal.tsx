@@ -333,6 +333,23 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
                   </p>
                 </div>
 
+                {/* Tags */}
+                {avatar.tags && avatar.tags.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-300 mb-2">Tags</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {avatar.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="px-3 py-1 bg-blue-500/20 text-blue-400 text-sm rounded-full"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Metadata */}
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>

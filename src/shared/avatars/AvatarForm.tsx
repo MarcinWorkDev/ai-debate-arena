@@ -35,6 +35,8 @@ export function AvatarForm({ avatar, onClose, onSuccess }: AvatarFormProps) {
   const [color, setColor] = useState(avatar?.color || AVAILABLE_COLORS[0])
   const [model, setModel] = useState(avatar?.model || AVAILABLE_MODELS[0])
   const [persona, setPersona] = useState(avatar?.persona || '')
+  const [tags, setTags] = useState<string[]>(avatar?.tags || [])
+  const [newTag, setNewTag] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -50,9 +52,13 @@ export function AvatarForm({ avatar, onClose, onSuccess }: AvatarFormProps) {
         if (color !== avatar.color) updates.color = color
         if (model !== avatar.model) updates.model = model
         if (persona !== avatar.persona) updates.persona = persona
+        const avatarTags = avatar.tags || []
+        if (JSON.stringify(tags.sort()) !== JSON.stringify(avatarTags.sort())) {
+          updates.tags = tags
+        }
         await updateAvatar(avatar.id, updates)
       } else {
-        const data: CreateAvatarInput = { name, color, model, persona }
+        const data: CreateAvatarInput = { name, color, model, persona, tags }
         await createAvatar(data)
       }
       onSuccess()
@@ -153,6 +159,69 @@ export function AvatarForm({ avatar, onClose, onSuccess }: AvatarFormProps) {
                 />
                 <p className="mt-1 text-xs text-slate-500">
                   Tip: End with "Answer concisely, maximum 2-3 sentences." for better debate flow.
+                </p>
+              </div>
+
+              {/* Tags */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Tags
+                </label>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newTag}
+                      onChange={(e) => setNewTag(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          const trimmed = newTag.trim().toLowerCase()
+                          if (trimmed && !tags.includes(trimmed)) {
+                            setTags([...tags, trimmed])
+                            setNewTag('')
+                          }
+                        }
+                      }}
+                      placeholder="Add a tag and press Enter"
+                      className="flex-1 px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const trimmed = newTag.trim().toLowerCase()
+                        if (trimmed && !tags.includes(trimmed)) {
+                          setTags([...tags, trimmed])
+                          setNewTag('')
+                        }
+                      }}
+                      className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  {tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-1 px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm"
+                        >
+                          {tag}
+                          <button
+                            type="button"
+                            onClick={() => setTags(tags.filter((t) => t !== tag))}
+                            className="text-blue-400 hover:text-blue-300 transition-colors"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Tags help categorize and filter avatars (e.g., "developer", "lawyer", "business").
                 </p>
               </div>
 

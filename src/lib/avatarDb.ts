@@ -40,6 +40,7 @@ function docToAvatar(docSnap: { id: string; data: () => Record<string, unknown> 
     model: data.model as string,
     persona: data.persona as string,
     isModerator: data.isModerator as boolean | undefined,
+    tags: data.tags as string[] | undefined,
     authorEmail: data.authorEmail as string,
     authorUid: data.authorUid as string,
     visibility: data.visibility as Avatar['visibility'],
@@ -108,6 +109,7 @@ export async function createAvatar(
     model: data.model,
     persona: data.persona,
     isModerator: data.isModerator || false,
+    tags: data.tags || [],
     authorEmail,
     authorUid,
     visibility: 'private' as const,
@@ -125,6 +127,7 @@ export async function createAvatar(
   return {
     id: docRef.id,
     ...data,
+    tags: data.tags || [],
     isModerator: data.isModerator || false,
     authorEmail,
     authorUid,
@@ -225,6 +228,13 @@ export async function updateAvatar(
   }
   if (updates.persona !== undefined && updates.persona !== avatar.persona) {
     changes.push({ field: 'persona', oldValue: avatar.persona, newValue: updates.persona })
+  }
+  if (updates.tags !== undefined) {
+    const oldTags = (avatar.tags || []).join(', ')
+    const newTags = (updates.tags || []).join(', ')
+    if (oldTags !== newTags) {
+      changes.push({ field: 'tags', oldValue: oldTags || '', newValue: newTags || '' })
+    }
   }
 
   if (changes.length === 0) {
@@ -594,6 +604,12 @@ export async function approveSuggestion(
     changes.push({ field: 'persona', oldValue: avatar.persona, newValue: suggestedChanges.persona })
     updates.persona = suggestedChanges.persona
   }
+  if (suggestedChanges.tags) {
+    const oldTags = (avatar.tags || []).join(', ')
+    const newTags = (suggestedChanges.tags || []).join(', ')
+    changes.push({ field: 'tags', oldValue: oldTags || '', newValue: newTags || '' })
+    updates.tags = suggestedChanges.tags
+  }
 
   // Update avatar with suggested changes
   const avatarRef = doc(db, 'avatars', avatarId)
@@ -670,6 +686,7 @@ export async function forkAvatar(
     model: sourceAvatar.model,
     persona: sourceAvatar.persona,
     isModerator: sourceAvatar.isModerator || false,
+    tags: sourceAvatar.tags || [],
     authorEmail: newOwnerEmail,
     authorUid: newOwnerUid,
     visibility: 'private' as const,
@@ -802,6 +819,7 @@ export async function migrateHardcodedAgents(): Promise<void> {
         model: agent.model,
         persona: agent.persona,
         isModerator: agent.isModerator || false,
+        tags: [],
         authorEmail: MIGRATION_AUTHOR_EMAIL,
         authorUid: '', // Will be linked when author logs in
         visibility: 'public',

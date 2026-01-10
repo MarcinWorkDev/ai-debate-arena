@@ -13,6 +13,7 @@ export interface Avatar {
   model: string
   persona: string
   isModerator?: boolean
+  tags?: string[]
 
   // Ownership & visibility
   authorEmail: string
@@ -93,6 +94,7 @@ export interface SuggestedChanges {
   color?: string
   model?: string
   persona?: string
+  tags?: string[]
 }
 
 export interface AvatarSuggestion {
@@ -116,6 +118,7 @@ export interface CreateAvatarInput {
   model: string
   persona: string
   isModerator?: boolean
+  tags?: string[]
 }
 
 export interface UpdateAvatarInput {
@@ -123,6 +126,7 @@ export interface UpdateAvatarInput {
   color?: string
   model?: string
   persona?: string
+  tags?: string[]
 }
 
 // Extended types for admin views

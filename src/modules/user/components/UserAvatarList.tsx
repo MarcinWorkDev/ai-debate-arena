@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { AvatarList } from '../../../shared/avatars/AvatarList'
 import { AvatarForm } from '../../../shared/avatars/AvatarForm'
 import { AvatarDetailModal } from '../../../shared/avatars/AvatarDetailModal'
+import { TagFilter } from '../../../shared/ui/TagFilter'
 import { useAvatars } from '../../../hooks/useAvatars'
 import type { Avatar } from '../../../lib/types/avatar'
 
@@ -14,6 +15,21 @@ interface UserAvatarListProps {
 export function UserAvatarList({ avatars, loading, onRefresh }: UserAvatarListProps) {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null)
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+
+  // Filter avatars by selected tags
+  const filteredAvatars = useMemo(() => {
+    if (selectedTags.length === 0) {
+      return avatars
+    }
+    return avatars.filter((avatar) => {
+      if (!avatar.tags || avatar.tags.length === 0) {
+        return false
+      }
+      // Avatar must have at least one of the selected tags
+      return selectedTags.some((tag) => avatar.tags?.includes(tag))
+    })
+  }, [avatars, selectedTags])
 
   return (
     <>
@@ -27,15 +43,29 @@ export function UserAvatarList({ avatars, loading, onRefresh }: UserAvatarListPr
         </button>
       </div>
 
+      {!loading && avatars.length > 0 && (
+        <div className="mb-6">
+          <TagFilter
+            avatars={avatars}
+            selectedTags={selectedTags}
+            onTagsChange={setSelectedTags}
+          />
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
         <AvatarList
-          avatars={avatars}
+          avatars={filteredAvatars}
           showOwner={false}
-          emptyMessage="You haven't created any avatars yet. Click 'Create Avatar' to get started!"
+          emptyMessage={
+            selectedTags.length > 0
+              ? "No avatars match the selected tags."
+              : "You haven't created any avatars yet. Click 'Create Avatar' to get started!"
+          }
           selectedAvatarId={selectedAvatarId}
           onAvatarSelect={setSelectedAvatarId}
         />

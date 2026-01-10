@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { useDebateStore } from '../../stores/debateStore'
 import { useAvatars } from '../../hooks/useAvatars'
+import { TagFilter } from '../../shared/ui/TagFilter'
 import type { Avatar } from '../../lib/types/avatar'
 
 interface DebatersModalProps {
@@ -15,6 +16,7 @@ export function DebatersModal({ isOpen, onClose }: DebatersModalProps) {
   const { selectedAgentIds, toggleAgentSelection } = useDebateStore()
   const { userAvatars, publicAvatars, loading, loadUserAvatars, loadPublicAvatars } = useAvatars()
   const [mounted, setMounted] = useState(false)
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
 
   useEffect(() => {
     setMounted(true)
@@ -29,18 +31,37 @@ export function DebatersModal({ isOpen, onClose }: DebatersModalProps) {
     }
   }, [isOpen, loadUserAvatars, loadPublicAvatars])
 
-  if (!mounted) return null
-
   // Combine user avatars and public avatars (deduplicated)
-  const allAvatars: Avatar[] = [...userAvatars]
-  for (const publicAvatar of publicAvatars) {
-    if (!allAvatars.find((a) => a.id === publicAvatar.id)) {
-      allAvatars.push(publicAvatar)
+  const allAvatars: Avatar[] = useMemo(() => {
+    const combined: Avatar[] = [...userAvatars]
+    for (const publicAvatar of publicAvatars) {
+      if (!combined.find((a) => a.id === publicAvatar.id)) {
+        combined.push(publicAvatar)
+      }
     }
-  }
+    return combined
+  }, [userAvatars, publicAvatars])
 
   // Filter to only active avatars (not blocked) and exclude moderators
-  const availableAvatars = allAvatars.filter((a) => a.status === 'active' && !a.isModerator)
+  const activeAvatars = useMemo(() => {
+    return allAvatars.filter((a) => a.status === 'active' && !a.isModerator)
+  }, [allAvatars])
+
+  // Filter by selected tags
+  const availableAvatars = useMemo(() => {
+    if (selectedTags.length === 0) {
+      return activeAvatars
+    }
+    return activeAvatars.filter((avatar) => {
+      if (!avatar.tags || avatar.tags.length === 0) {
+        return false
+      }
+      // Avatar must have at least one of the selected tags
+      return selectedTags.some((tag) => avatar.tags?.includes(tag))
+    })
+  }, [activeAvatars, selectedTags])
+
+  if (!mounted) return null
 
   const modalContent = (
     <AnimatePresence>
@@ -90,6 +111,14 @@ export function DebatersModal({ isOpen, onClose }: DebatersModalProps) {
                 >
                   Manage Avatars
                 </Link>
+              </div>
+              {/* Tag Filter */}
+              <div className="mt-4">
+                <TagFilter
+                  avatars={activeAvatars}
+                  selectedTags={selectedTags}
+                  onTagsChange={setSelectedTags}
+                />
               </div>
             </div>
 
@@ -200,7 +229,19 @@ export function DebatersModal({ isOpen, onClose }: DebatersModalProps) {
                               )}
                             </div>
                             <div className="text-xs text-slate-400 mb-1">{avatar.model}</div>
-                            <div className="text-xs text-slate-500 leading-relaxed line-clamp-2">{avatar.persona}</div>
+                            <div className="text-xs text-slate-500 leading-relaxed line-clamp-2 mb-1">{avatar.persona}</div>
+                            {avatar.tags && avatar.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {avatar.tags.map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="px-1.5 py-0.5 bg-slate-700/50 text-slate-300 text-[10px] rounded"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </motion.label>

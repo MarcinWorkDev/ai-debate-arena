@@ -38,6 +38,20 @@ export function AvatarCard({ avatar, showOwner, onClick }: AvatarCardProps) {
       {/* Persona preview */}
       <p className="text-sm text-slate-400 line-clamp-3 mb-3">{avatar.persona}</p>
 
+      {/* Tags */}
+      {avatar.tags && avatar.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {avatar.tags.map((tag) => (
+            <span
+              key={tag}
+              className="px-2 py-0.5 bg-slate-800 text-slate-400 text-xs rounded"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Footer */}
       <div className="flex items-center justify-between text-xs text-slate-500">
         {showOwner && <span>{avatar.authorEmail}</span>}
