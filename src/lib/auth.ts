@@ -21,9 +21,7 @@ export interface UserProfile {
 }
 
 export async function signInWithGoogle(): Promise<User> {
-  console.log('[Auth] Starting Google sign in...')
   const result = await signInWithPopup(auth, googleProvider)
-  console.log('[Auth] Sign in successful:', result.user.email)
   return result.user
 }
 
@@ -36,15 +34,12 @@ export function onAuthChange(callback: (user: User | null) => void): () => void 
 }
 
 export async function ensureUserProfile(user: User): Promise<UserProfile> {
-  console.log('[Auth] ensureUserProfile for:', user.uid)
   const userRef = doc(db, 'users', user.uid)
 
   try {
     const userSnap = await getDoc(userRef)
-    console.log('[Auth] User doc exists:', userSnap.exists())
 
     if (!userSnap.exists()) {
-      console.log('[Auth] Creating new user profile...')
       const newProfile = {
         email: user.email || '',
         displayName: user.displayName || '',
@@ -57,7 +52,6 @@ export async function ensureUserProfile(user: User): Promise<UserProfile> {
         creditsUsed: 0,
       }
       await setDoc(userRef, newProfile)
-      console.log('[Auth] User profile created')
       return {
         uid: user.uid,
         email: newProfile.email,
@@ -73,7 +67,6 @@ export async function ensureUserProfile(user: User): Promise<UserProfile> {
     }
 
     const data = userSnap.data()
-    console.log('[Auth] User profile loaded:', { isAdmin: data.isAdmin, isApproved: data.isApproved })
     return {
       uid: user.uid,
       email: data.email || '',

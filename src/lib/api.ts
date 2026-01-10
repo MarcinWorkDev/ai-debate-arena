@@ -34,7 +34,6 @@ async function getAuthToken(): Promise<string | null> {
     const { auth } = await import('./firebase')
     const currentUser = auth.currentUser
     if (!currentUser) {
-      console.warn('⚠️ No authenticated user found')
       return null
     }
     const token = await currentUser.getIdToken()
@@ -142,7 +141,6 @@ export async function streamChatWithUsage(
           if (data === '[DONE]') {
             clearTimeout(timeoutId)
             if (streamInactivityTimeout) clearTimeout(streamInactivityTimeout)
-            console.log('✅ Stream completed, duration:', Date.now() - startTime, 'ms')
             return { content: fullContent, usage }
           }
           try {
@@ -177,7 +175,6 @@ export async function streamChatWithUsage(
     console.error('Error reading stream:', error, 'duration:', Date.now() - startTime, 'ms')
     // If we have partial content, return it
     if (fullContent.length > 0) {
-      console.log('⚠️ Returning partial content due to error')
       return { content: fullContent, usage }
     }
     throw error

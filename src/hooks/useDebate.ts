@@ -93,7 +93,6 @@ export function useDebate() {
     // Check if moderator already provided summary (last message is from moderator)
     const lastMessage = store.messages[store.messages.length - 1]
     if (lastMessage && lastMessage.agentId === 'moderator') {
-      console.log('Moderator summary already provided, finishing debate')
       setStatus('finished')
       setActiveAgent(null)
       return
@@ -249,7 +248,6 @@ ${langInstruction}`
       const partialContent = store.currentStreamingContent || ''
       
       if (partialContent.trim().length > 0) {
-        console.log('Saving partial moderator summary due to error')
         try {
           // Finalize the partial message
           useDebateStore.getState().finalizeMessage(0)
@@ -284,7 +282,6 @@ ${langInstruction}`
       // If we couldn't save partial content, pause the debate so user can retry
       setStatus('paused')
       setActiveAgent(null)
-      console.log('Moderator summary failed, debate paused. User can resume to retry.')
     }
   }, [setActiveAgent, setStatus, saveMessageToDb])
 
@@ -296,7 +293,6 @@ ${langInstruction}`
     // Check if moderator already provided summary (in DB or in local state)
     const lastMessage = store.messages[store.messages.length - 1]
     if (lastMessage && lastMessage.agentId === 'moderator') {
-      console.log('Moderator summary already provided, finishing debate')
       setStatus('finished')
       setActiveAgent(null)
       return
@@ -304,7 +300,6 @@ ${langInstruction}`
     
     // Check if moderator is currently streaming (partial content)
     if (store.activeAgent?.id === 'moderator' && store.currentStreamingContent) {
-      console.log('Moderator is already streaming, waiting...')
       return
     }
     
@@ -598,14 +593,12 @@ CRITICAL RULES:
     
     // Don't resume if debate is already finished
     if (store.status === 'finished') {
-      console.log('Cannot resume finished debate')
       return
     }
     
     // Check if moderator already provided summary
     const lastMessage = store.messages[store.messages.length - 1]
     if (lastMessage && lastMessage.agentId === 'moderator') {
-      console.log('Moderator summary already provided, cannot resume')
       setStatus('finished')
       return
     }

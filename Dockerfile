@@ -13,6 +13,11 @@ RUN npm ci
 # Copy source files
 COPY . .
 
+# Copy .env.production file (must exist - create it from .env.production.example)
+# This file should contain VITE_FIREBASE_* variables for production build
+# Vite will automatically load .env.production during build
+COPY .env.production .env.production
+
 # Build the application (both frontend and backend)
 RUN npm run build
 

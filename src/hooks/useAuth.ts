@@ -12,21 +12,18 @@ export function useAuth() {
 
   useEffect(() => {
     let mounted = true
-    console.log('[useAuth] Setting up auth listener...')
 
     // Timeout - if no auth state in 5s, stop loading
     const timeout = setTimeout(() => {
       if (mounted) {
         const store = useAuthStore.getState()
         if (store.loading) {
-          console.log('[useAuth] Timeout - no response from Firebase')
           store.setLoading(false)
         }
       }
     }, 5000)
 
     const unsubscribe = onAuthChange(async (firebaseUser) => {
-      console.log('[useAuth] Auth state changed:', firebaseUser?.email || 'null')
       if (!mounted) return
       clearTimeout(timeout)
 
@@ -36,7 +33,6 @@ export function useAuth() {
         store.setUser(firebaseUser)
         try {
           const userProfile = await ensureUserProfile(firebaseUser)
-          console.log('[useAuth] Profile loaded, setting state...')
           if (mounted) {
             store.setProfile(userProfile)
             store.setError(null)
@@ -53,13 +49,11 @@ export function useAuth() {
       }
 
       if (mounted) {
-        console.log('[useAuth] Setting loading to false')
         store.setLoading(false)
       }
     })
 
     return () => {
-      console.log('[useAuth] Cleanup')
       mounted = false
       clearTimeout(timeout)
       unsubscribe()

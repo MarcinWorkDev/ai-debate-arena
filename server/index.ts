@@ -28,9 +28,6 @@ app.use(express.json())
 // Serve static files from dist/client directory (frontend build)
 // Use process.cwd() to get the app root directory (works in Docker)
 const distPath = path.join(process.cwd(), 'dist', 'client')
-console.log('📁 Static files path:', distPath)
-console.log('📁 Current working directory:', process.cwd())
-console.log('📁 __dirname:', __dirname)
 // Serve static files, but don't serve index.html automatically (we'll handle it in catch-all)
 app.use(express.static(distPath, { 
   index: false, // Don't serve index.html automatically
@@ -46,15 +43,12 @@ if (!admin.apps.length) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       })
-      console.log('✅ Firebase Admin initialized with service account')
     } else if (process.env.FIREBASE_PROJECT_ID) {
       // Initialize with project ID (for emulator or default credentials)
       admin.initializeApp({
         projectId: process.env.FIREBASE_PROJECT_ID
       })
-      console.log('✅ Firebase Admin initialized with project ID')
     } else {
-      console.warn('⚠️ Firebase Admin not initialized - no credentials found')
     }
   } catch (error) {
     console.error('❌ Error initializing Firebase Admin:', error)
@@ -84,7 +78,6 @@ const verifyToken = async (req: AuthenticatedRequest, res: express.Response, nex
     const decodedToken = await admin.auth().verifyIdToken(token)
     req.user = decodedToken
     
-    console.log('✅ Token verified for user:', decodedToken.uid, decodedToken.email)
     next()
   } catch (error) {
     console.error('❌ Token verification failed:', error)
@@ -151,12 +144,6 @@ app.post('/api/chat', verifyToken, async (req, res) => {
     const authenticatedReq = req as AuthenticatedRequest
     const userId = authenticatedReq.user?.uid
 
-    console.log('📨 Request received:', { 
-      model, 
-      messageCount: messages.length,
-      userId,
-      timestamp: new Date().toISOString()
-    })
 
     if (!process.env.OPENAI_API_KEY) {
       clearTimeout(requestTimeout)
@@ -171,7 +158,6 @@ app.post('/api/chat', verifyToken, async (req, res) => {
 
     // Handle client disconnect
     req.on('close', () => {
-      console.log('🔌 Client disconnected - request closed')
       clearTimeout(requestTimeout)
       responseClosed = true
       // Don't destroy response immediately - let it finish gracefully if possible
@@ -179,12 +165,10 @@ app.post('/api/chat', verifyToken, async (req, res) => {
     
     // Handle request abort
     req.on('aborted', () => {
-      console.log('🔌 Request aborted by client')
       clearTimeout(requestTimeout)
       responseClosed = true
     })
 
-    console.log('🚀 Starting OpenAI stream...', { model, timestamp: new Date().toISOString() })
 
     let result
     let streamStartTime = Date.now()
@@ -219,7 +203,6 @@ app.post('/api/chat', verifyToken, async (req, res) => {
         onChunk({ chunk }) {
           lastChunkTime = Date.now()
           resetStreamTimeout() // Reset timeout on each chunk
-          console.log('📦 onChunk:', chunk.type, 'time since start:', Date.now() - streamStartTime, 'ms')
         },
         onError({ error }) {
           console.error('🔥 OpenAI onError:', {
@@ -249,12 +232,6 @@ app.post('/api/chat', verifyToken, async (req, res) => {
           }
         },
         onFinish({ text, finishReason }) {
-          console.log('✅ onFinish:', { 
-            finishReason, 
-            textLength: text?.length,
-            duration: Date.now() - streamStartTime,
-            timestamp: new Date().toISOString()
-          })
           if (streamTimeout) clearTimeout(streamTimeout)
         }
       })
@@ -313,23 +290,19 @@ app.post('/api/chat', verifyToken, async (req, res) => {
         return
       }
       
-      console.log('📡 Starting to read text stream...', { timestamp: new Date().toISOString() })
       for await (const chunk of result.textStream) {
         // Check if client is still connected
         if (!isResponseWritable()) {
-          console.log('⚠️ Client disconnected, stopping stream')
           break
         }
         
         chunkCount++
         lastChunkTime = Date.now()
         resetStreamTimeout() // Reset timeout on each chunk
-        console.log('📝 Text chunk #' + chunkCount + ':', chunk.substring(0, 50) + '...', 'time:', Date.now() - streamStartTime, 'ms')
         if (!safeWrite(`data: ${JSON.stringify({ content: chunk })}\n\n`)) {
           break
         }
       }
-      console.log('✅ Finished reading stream, chunks:', chunkCount, 'duration:', Date.now() - streamStartTime, 'ms')
     } catch (streamError: unknown) {
       clearTimeout(requestTimeout)
       if (streamTimeout) clearTimeout(streamTimeout)
@@ -343,7 +316,6 @@ app.post('/api/chat', verifyToken, async (req, res) => {
       })
       
       if (error.message?.includes('terminated') || error.code === 'UND_ERR_SOCKET') {
-        console.log('⚠️ Stream terminated by client or network error')
         if (!isResponseWritable()) {
           return // Response already closed, nothing to do
         }
@@ -371,13 +343,11 @@ app.post('/api/chat', verifyToken, async (req, res) => {
     if (!isResponseWritable()) {
       clearTimeout(requestTimeout)
       if (streamTimeout) clearTimeout(streamTimeout)
-      console.log('⚠️ Response closed, skipping usage stats')
       return
     }
 
     // Get usage stats with timeout
     try {
-      console.log('📊 Waiting for usage stats...', { timestamp: new Date().toISOString() })
       const usagePromise = result.usage
       const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Usage stats timeout')), 10000)
@@ -391,7 +361,6 @@ app.post('/api/chat', verifyToken, async (req, res) => {
         reasoningTokensUsed?: number
       } | null
       
-      console.log(`✅ Stream finished: ${chunkCount} chunks sent, tokens:`, usage, 'total duration:', Date.now() - streamStartTime, 'ms')
 
       // Send usage info before [DONE]
       const usageData = {
@@ -466,7 +435,6 @@ app.get('*', (req, res) => {
   }
   
   const indexPath = path.join(distPath, 'index.html')
-  console.log('📄 Serving index.html for path:', req.path, 'from:', indexPath)
   
   // Check if file exists before sending
   if (!fs.existsSync(indexPath)) {
@@ -478,7 +446,5 @@ app.get('*', (req, res) => {
 })
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`)
-  console.log(`📡 OpenAI API: ${process.env.OPENAI_API_KEY ? 'configured' : 'NOT configured'}`)
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`)
+  // Server started
 })
