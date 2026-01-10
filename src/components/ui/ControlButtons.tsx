@@ -1,20 +1,32 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useDebate } from '../../hooks/useDebate'
+import { NoCreditsModal } from './NoCreditsModal'
 
 export function ControlButtons() {
   const { status, startDebate, pauseDebate, resumeDebate, resetDebate, topic } = useDebate()
+  const [showNoCreditsModal, setShowNoCreditsModal] = useState(false)
+
+  const handleStartDebate = async () => {
+    const result = await startDebate()
+    if (result === false) {
+      // No credits available
+      setShowNoCreditsModal(true)
+    }
+  }
 
   return (
-    <div className="flex gap-2">
-      {status === 'idle' && (
-        <Button
-          onClick={startDebate}
-          disabled={!topic.trim()}
-          variant="primary"
-        >
-          Start Debate
-        </Button>
-      )}
+    <>
+      <div className="flex gap-2">
+        {status === 'idle' && (
+          <Button
+            onClick={handleStartDebate}
+            disabled={!topic.trim()}
+            variant="primary"
+          >
+            Start Debate
+          </Button>
+        )}
 
       {status === 'running' && (
         <Button onClick={pauseDebate} variant="warning">
@@ -38,7 +50,12 @@ export function ControlButtons() {
           New Debate
         </Button>
       )}
-    </div>
+      </div>
+      <NoCreditsModal
+        isOpen={showNoCreditsModal}
+        onClose={() => setShowNoCreditsModal(false)}
+      />
+    </>
   )
 }
 

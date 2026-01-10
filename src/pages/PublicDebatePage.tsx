@@ -1,0 +1,126 @@
+import { useState, useEffect } from 'react'
+import { useParams } from 'react-router-dom'
+import { getDebateBySlug, getMessages, type Debate, type DebateMessage } from '../lib/db'
+
+export function PublicDebatePage() {
+  const { slug } = useParams<{ slug: string }>()
+  const [debate, setDebate] = useState<Debate | null>(null)
+  const [messages, setMessages] = useState<DebateMessage[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const load = async () => {
+      if (!slug) return
+      setLoading(true)
+      setError(null)
+
+      try {
+        const debateData = await getDebateBySlug(slug)
+        if (!debateData) {
+          setError('Debate not found or is not public')
+          return
+        }
+
+        setDebate(debateData)
+        const messagesData = await getMessages(debateData.id)
+        setMessages(messagesData)
+      } catch (err) {
+        console.error('Error loading debate:', err)
+        setError('Failed to load debate')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [slug])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-950">
+        <div className="w-12 h-12 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (error || !debate) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-950">
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
+            <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h1 className="text-xl font-bold text-white mb-2">Not Found</h1>
+          <p className="text-slate-400">{error || 'This debate does not exist or is not public.'}</p>
+          <a
+            href="/"
+            className="inline-block mt-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+          >
+            Go Home
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950">
+      {/* Header */}
+      <header className="bg-slate-900 border-b border-slate-800">
+        <div className="max-w-4xl mx-auto px-4 py-6">
+          <div className="flex items-center gap-2 text-slate-400 text-sm mb-2">
+            <span>AI Debate Arena</span>
+            <span>/</span>
+            <span>Public Debate</span>
+          </div>
+          <h1 className="text-2xl font-bold text-white">{debate.title}</h1>
+          <div className="flex items-center gap-4 mt-2 text-sm text-slate-400">
+            <span className={`px-2 py-0.5 rounded-full text-xs ${
+              debate.status === 'finished'
+                ? 'bg-green-500/20 text-green-400'
+                : debate.status === 'running'
+                ? 'bg-blue-500/20 text-blue-400'
+                : 'bg-slate-500/20 text-slate-400'
+            }`}>
+              {debate.status}
+            </span>
+            <span>{debate.createdAt.toLocaleDateString()}</span>
+            <span>{messages.length} messages</span>
+          </div>
+        </div>
+      </header>
+
+      {/* Messages */}
+      <main className="max-w-4xl mx-auto px-4 py-6">
+        <div className="space-y-4">
+          {messages.map((message) => (
+            <div
+              key={message.id}
+              className="bg-slate-900 rounded-xl border border-slate-800 p-4"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: message.avatarColor }}
+                />
+                <span className="text-white font-medium">{message.avatarName}</span>
+                <span className="text-slate-500 text-xs">
+                  {new Date(message.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+              <p className="text-slate-300 whitespace-pre-wrap">{message.content}</p>
+            </div>
+          ))}
+        </div>
+
+        {messages.length === 0 && (
+          <div className="text-center py-12 text-slate-400">
+            No messages in this debate yet.
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}

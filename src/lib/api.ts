@@ -9,8 +9,78 @@ export interface ChatRequest {
   systemPrompt: string
 }
 
+export interface TokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+}
+
+export interface StreamResult {
+  content: string
+  usage: TokenUsage | null
+}
+
 const API_URL = 'http://localhost:3001'
 
+// Streaming chat with usage tracking
+export async function streamChatWithUsage(
+  request: ChatRequest,
+  onChunk: (chunk: string) => void
+): Promise<StreamResult> {
+  const response = await fetch(`${API_URL}/api/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('No response body')
+  }
+
+  const decoder = new TextDecoder()
+  let fullContent = ''
+  let usage: TokenUsage | null = null
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    const chunk = decoder.decode(value, { stream: true })
+    const lines = chunk.split('\n')
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6)
+        if (data === '[DONE]') {
+          return { content: fullContent, usage }
+        }
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.content) {
+            fullContent += parsed.content
+            onChunk(parsed.content)
+          }
+          if (parsed.usage) {
+            usage = parsed.usage
+          }
+        } catch {
+          // Ignore parse errors for partial chunks
+        }
+      }
+    }
+  }
+
+  return { content: fullContent, usage }
+}
+
+// Legacy generator-based API for backwards compatibility
 export async function* streamChat(request: ChatRequest): AsyncGenerator<string> {
   const response = await fetch(`${API_URL}/api/chat`, {
     method: 'POST',

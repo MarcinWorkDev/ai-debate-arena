@@ -1,6 +1,6 @@
 import express from 'express'
 import cors from 'cors'
-import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { createOpenAI } from '@ai-sdk/openai'
 import { streamText } from 'ai'
 import 'dotenv/config'
 
@@ -8,15 +8,15 @@ const app = express()
 const PORT = 3001
 
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
   credentials: true
 }))
 
 app.use(express.json())
 
-// Gemini client
-const google = createGoogleGenerativeAI({
-  apiKey: process.env.GEMINI_API_KEY || ''
+// OpenAI client
+const openai = createOpenAI({
+  apiKey: process.env.OPENAI_API_KEY || ''
 })
 
 interface ChatRequest {
@@ -31,8 +31,8 @@ app.post('/api/chat', async (req, res) => {
 
     console.log('📨 Request received:', { model, messageCount: messages.length })
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: 'GEMINI_API_KEY not configured' })
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
     }
 
     // Set up SSE
@@ -43,7 +43,7 @@ app.post('/api/chat', async (req, res) => {
     console.log('🚀 Starting stream...')
 
     const result = streamText({
-      model: google('gemini-2.5-flash'),
+      model: openai(model),
       system: systemPrompt,
       messages: messages.map(m => ({
         role: m.role as 'user' | 'assistant',
@@ -67,8 +67,12 @@ app.post('/api/chat', async (req, res) => {
       res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`)
     }
 
-    console.log(`✅ Stream finished: ${chunkCount} chunks sent`)
+    // Get usage stats
+    const usage = await result.usage
+    console.log(`✅ Stream finished: ${chunkCount} chunks sent, tokens:`, usage)
 
+    // Send usage info before [DONE]
+    res.write(`data: ${JSON.stringify({ usage: { promptTokens: usage.promptTokens, completionTokens: usage.completionTokens, totalTokens: usage.totalTokens } })}\n\n`)
     res.write('data: [DONE]\n\n')
     res.end()
 
@@ -85,5 +89,5 @@ app.get('/health', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`)
-  console.log(`📡 Gemini API: ${process.env.GEMINI_API_KEY ? 'configured' : 'NOT configured'}`)
+  console.log(`📡 OpenAI API: ${process.env.OPENAI_API_KEY ? 'configured' : 'NOT configured'}`)
 })
