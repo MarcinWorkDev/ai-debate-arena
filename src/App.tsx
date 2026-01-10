@@ -2,12 +2,15 @@ import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { NoCredits } from './components/auth/NoCredits'
-import { HomePage } from './pages/HomePage'
-import { HistoryPage } from './pages/HistoryPage'
-import { PublicDebatePage } from './pages/PublicDebatePage'
-import { ViewDebatePage } from './pages/ViewDebatePage'
-import { AvatarsPage } from './pages/AvatarsPage'
-import { AdminPanel } from './components/admin/AdminPanel'
+import { DebatePage } from './modules/debate/pages/DebatePage'
+import { ViewDebatePage } from './modules/debate/pages/ViewDebatePage'
+import { PublicDebatePage } from './modules/debate/pages/PublicDebatePage'
+import { UserAvatarsPage } from './modules/user/pages/UserAvatarsPage'
+import { PublicAvatarsPage } from './modules/user/pages/PublicAvatarsPage'
+import { UserDebatesPage } from './modules/user/pages/UserDebatesPage'
+import { UserPage } from './modules/user/pages/UserPage'
+import { AdminDashboard } from './modules/admin/pages/AdminDashboard'
+import { AdminUserViewPage } from './modules/admin/pages/AdminUserViewPage'
 import { useAuth } from './hooks/useAuth'
 import { useAvatars } from './hooks/useAvatars'
 import './styles/globals.css'
@@ -35,7 +38,7 @@ function AvatarMigration() {
 }
 
 function ProtectedApp() {
-  return <HomePage />
+  return <DebatePage />
 }
 
 function App() {
@@ -58,10 +61,34 @@ function App() {
           }
         />
         <Route
-          path="/history"
+          path="/user"
           element={
             <AuthGuard>
-              <HistoryPage />
+              <UserPage />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/user/debates"
+          element={
+            <AuthGuard>
+              <UserDebatesPage />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/user/avatars"
+          element={
+            <AuthGuard>
+              <UserAvatarsPage />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/user/avatars/public"
+          element={
+            <AuthGuard>
+              <PublicAvatarsPage />
             </AuthGuard>
           }
         />
@@ -74,18 +101,18 @@ function App() {
           }
         />
         <Route
-          path="/avatars"
+          path="/admin"
           element={
-            <AuthGuard>
-              <AvatarsPage />
+            <AuthGuard requireAdmin>
+              <AdminDashboard />
             </AuthGuard>
           }
         />
         <Route
-          path="/admin"
+          path="/admin/user/:userId"
           element={
             <AuthGuard requireAdmin>
-              <AdminPanel />
+              <AdminUserViewPage />
             </AuthGuard>
           }
         />

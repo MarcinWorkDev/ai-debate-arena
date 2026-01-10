@@ -24,6 +24,16 @@ service cloud.firestore {
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'isApproved', 'isBlocked']);
       // Admin can read/update any user
       allow read, update: if isAdmin();
+
+      // Audit log subcollection
+      match /auditLog/{logId} {
+        // Users can read their own audit log
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        // Admin can read any audit log
+        allow read: if isAdmin();
+        // Only admins can create audit log entries
+        allow create: if isAdmin();
+      }
     }
 
     // Debates collection
@@ -38,7 +48,14 @@ service cloud.firestore {
 
       // Messages subcollection
       match /messages/{messageId} {
-        allow read: if isAuthenticated();
+        // Messages from public debates can be read by anyone
+        allow read: if get(/databases/$(database)/documents/debates/$(debateId)).data.isPublic == true;
+        // Authenticated users can read messages from their own debates
+        allow read: if isAuthenticated() && 
+          get(/databases/$(database)/documents/debates/$(debateId)).data.userId == request.auth.uid;
+        // Admin can read all messages
+        allow read: if isAdmin();
+        // Only authenticated users can create messages
         allow create: if isAuthenticated();
       }
     }

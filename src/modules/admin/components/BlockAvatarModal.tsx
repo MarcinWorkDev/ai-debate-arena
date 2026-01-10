@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import type { Avatar } from '../../lib/types/avatar'
-import { useAvatars } from '../../hooks/useAvatars'
+import type { Avatar } from '../../../lib/types/avatar'
+import { useAvatars } from '../../../hooks/useAvatars'
 
 interface BlockAvatarModalProps {
   avatar: Avatar

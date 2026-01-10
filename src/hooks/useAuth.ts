@@ -66,7 +66,7 @@ export function useAuth() {
     store.setError(null)
     try {
       await signInWithGoogle()
-      // Page will redirect to Google, no need to handle response here
+      // Auth state change will be handled by onAuthChange
     } catch (err) {
       console.error('Login error:', err)
       store.setError('Failed to sign in')

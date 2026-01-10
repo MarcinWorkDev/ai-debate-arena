@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { getUserDebates, type Debate } from '../../lib/db'
-import { useAuth } from '../../hooks/useAuth'
-import { ShareToggle } from './ShareToggle'
+import { getUserDebates, type Debate } from '../../../lib/db'
+import { useAuth } from '../../../hooks/useAuth'
+import { StatusBadge } from '../../../shared/ui/StatusBadge'
+import { LoadingSpinner } from '../../../shared/ui/LoadingSpinner'
+import { EmptyState } from '../../../shared/ui/EmptyState'
+import { ShareToggle } from '../../../components/debates/ShareToggle'
 
-export function DebateHistory() {
+export function UserDebateList() {
   const { user } = useAuth()
   const [debates, setDebates] = useState<Debate[]>([])
   const [loading, setLoading] = useState(true)
@@ -27,23 +30,19 @@ export function DebateHistory() {
   }, [user])
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
-      </div>
-    )
+    return <LoadingSpinner size="sm" className="py-12" />
   }
 
   if (debates.length === 0) {
     return (
-      <div className="text-center py-12">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-800 flex items-center justify-center">
+      <EmptyState
+        icon={
           <svg className="w-8 h-8 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
-        </div>
-        <p className="text-slate-400">No debates yet. Start your first debate!</p>
-      </div>
+        }
+        message="No debates yet. Start your first debate!"
+      />
     )
   }
 
@@ -63,15 +62,7 @@ export function DebateHistory() {
                 {debate.title}
               </h3>
               <div className="flex items-center gap-3 mt-1 text-sm text-slate-400">
-                <span className={`px-2 py-0.5 rounded-full text-xs ${
-                  debate.status === 'finished'
-                    ? 'bg-green-500/20 text-green-400'
-                    : debate.status === 'running'
-                    ? 'bg-blue-500/20 text-blue-400'
-                    : 'bg-slate-500/20 text-slate-400'
-                }`}>
-                  {debate.status}
-                </span>
+                <StatusBadge status={debate.status} type="debate" />
                 <span>{debate.creditsUsed} credits</span>
                 <span>{debate.roundCount} / {debate.maxRounds} rounds</span>
                 <span>{debate.createdAt.toLocaleDateString()}</span>
@@ -91,3 +82,4 @@ export function DebateHistory() {
     </div>
   )
 }
+

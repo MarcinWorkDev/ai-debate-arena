@@ -4,27 +4,37 @@ import { EffectComposer, Bloom, Vignette, SMAA } from '@react-three/postprocessi
 import { RoundTable } from './RoundTable'
 import { AgentAvatar } from './AgentAvatar'
 import { Environment } from './Environment'
-import { allAvailableAgents, moderator, createUserAgent, calculatePositionsForAgents } from '../../lib/agents'
+import { moderator, createUserAgent, avatarsToAgents } from '../../lib/agents'
 import { useDebateStore } from '../../stores/debateStore'
+import { useAvatarStore } from '../../stores/avatarStore'
+import { useAuth } from '../../hooks/useAuth'
 
 export function Scene() {
   const activeAgent = useDebateStore((state) => state.activeAgent)
   const userName = useDebateStore((state) => state.userName)
   const selectedAgentIds = useDebateStore((state) => state.selectedAgentIds)
+  const getVisibleAvatars = useAvatarStore((state) => state.getVisibleAvatars)
+  const { profile } = useAuth()
   
-  // Get selected agents or default to active agents
-  let selectedAgents = selectedAgentIds.length > 0
-    ? allAvailableAgents.filter(agent => selectedAgentIds.includes(agent.id))
-    : allAvailableAgents.filter(agent => agent.active)
+  // Get all available avatars from database
+  const allAvatars = getVisibleAvatars()
   
-  // Recalculate positions for selected agents dynamically
-  selectedAgents = calculatePositionsForAgents(selectedAgents)
+  // Filter selected avatars (exclude moderators)
+  const selectedAvatars = selectedAgentIds.length > 0
+    ? allAvatars.filter(avatar => selectedAgentIds.includes(avatar.id) && !avatar.isModerator)
+    : []
+  
+  // Convert avatars to agents with calculated positions
+  const selectedAgents = avatarsToAgents(selectedAvatars)
+  
+  // Use profile displayName as default if userName is not set
+  const displayName = userName || profile?.displayName || 'You'
   
   // Get all participants: selected agents + moderator + user
   const participants = [
     ...selectedAgents,
     moderator,
-    createUserAgent(userName)
+    createUserAgent(displayName)
   ]
 
   return (

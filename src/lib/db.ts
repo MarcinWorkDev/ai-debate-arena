@@ -323,13 +323,19 @@ export async function getMessages(debateId: string): Promise<DebateMessage[]> {
   const snapshot = await getDocs(q)
   return snapshot.docs.map(docSnap => {
     const data = docSnap.data()
+    // Ensure all token fields are properly extracted (handle both undefined and 0 values)
+    const tokensUsed = typeof data.tokensUsed === 'number' ? data.tokensUsed : 0
+    const inputTokens = typeof data.inputTokens === 'number' ? data.inputTokens : (tokensUsed || 0)
+    const outputTokens = typeof data.outputTokens === 'number' ? data.outputTokens : 0
+    const reasoningTokens = typeof data.reasoningTokens === 'number' ? data.reasoningTokens : 0
+    
     return {
       id: docSnap.id,
       ...data,
-      tokensUsed: data.tokensUsed || 0,
-      inputTokens: data.inputTokens ?? data.tokensUsed ?? 0,
-      outputTokens: data.outputTokens ?? 0,
-      reasoningTokens: data.reasoningTokens ?? 0,
+      tokensUsed,
+      inputTokens,
+      outputTokens,
+      reasoningTokens,
     } as DebateMessage
   })
 }
@@ -367,14 +373,6 @@ export async function updateUserCredits(
   })
 }
 
-export async function setUserCredits(
-  userId: string,
-  creditsAvailable: number
-): Promise<void> {
-  const userRef = doc(db, 'users', userId)
-  await updateDoc(userRef, { creditsAvailable })
-}
-
 // ============================================
 // Admin Functions
 // ============================================
@@ -390,26 +388,132 @@ export async function getAllUsers() {
   }))
 }
 
-export async function approveUser(userId: string): Promise<void> {
+// ============================================
+// User Audit Log
+// ============================================
+
+export interface UserAuditLogEntry {
+  id: string
+  action: 'approved' | 'blocked' | 'unblocked' | 'credits_added' | 'credits_set' | 'created'
+  actorUid: string
+  actorEmail: string
+  details?: {
+    oldValue?: number | boolean
+    newValue?: number | boolean
+    reason?: string
+  }
+  timestamp: Date
+}
+
+async function addUserAuditLogEntry(
+  userId: string,
+  action: UserAuditLogEntry['action'],
+  actorUid: string,
+  actorEmail: string,
+  details?: UserAuditLogEntry['details']
+): Promise<void> {
+  const auditLogRef = collection(db, 'users', userId, 'auditLog')
+  await addDoc(auditLogRef, {
+    action,
+    actorUid,
+    actorEmail,
+    details: details || null,
+    timestamp: serverTimestamp(),
+  })
+}
+
+export async function getUserAuditLog(userId: string): Promise<UserAuditLogEntry[]> {
+  const auditLogRef = collection(db, 'users', userId, 'auditLog')
+  const q = query(auditLogRef, orderBy('timestamp', 'desc'))
+  const snapshot = await getDocs(q)
+  
+  return snapshot.docs.map(docSnap => {
+    const data = docSnap.data()
+    return {
+      id: docSnap.id,
+      action: data.action,
+      actorUid: data.actorUid,
+      actorEmail: data.actorEmail,
+      details: data.details || undefined,
+      timestamp: (data.timestamp as Timestamp)?.toDate() || new Date(),
+    }
+  })
+}
+
+// ============================================
+// Admin Functions
+// ============================================
+
+export async function approveUser(userId: string, adminUid: string, adminEmail: string): Promise<void> {
   const userRef = doc(db, 'users', userId)
+  const userSnap = await getDoc(userRef)
+  const wasApproved = userSnap.data()?.isApproved || false
+  
   await updateDoc(userRef, { isApproved: true })
+  
+  if (!wasApproved) {
+    await addUserAuditLogEntry(userId, 'approved', adminUid, adminEmail)
+  }
 }
 
-export async function blockUser(userId: string): Promise<void> {
+export async function blockUser(userId: string, adminUid: string, adminEmail: string, reason?: string): Promise<void> {
   const userRef = doc(db, 'users', userId)
+  const userSnap = await getDoc(userRef)
+  const wasBlocked = userSnap.data()?.isBlocked || false
+  
   await updateDoc(userRef, { isBlocked: true })
+  
+  if (!wasBlocked) {
+    await addUserAuditLogEntry(userId, 'blocked', adminUid, adminEmail, { reason })
+  }
 }
 
-export async function unblockUser(userId: string): Promise<void> {
+export async function unblockUser(userId: string, adminUid: string, adminEmail: string): Promise<void> {
   const userRef = doc(db, 'users', userId)
+  const userSnap = await getDoc(userRef)
+  const wasBlocked = userSnap.data()?.isBlocked || false
+  
   await updateDoc(userRef, { isBlocked: false })
+  
+  if (wasBlocked) {
+    await addUserAuditLogEntry(userId, 'unblocked', adminUid, adminEmail)
+  }
 }
 
-export async function assignCredits(userId: string, credits: number): Promise<void> {
+export async function assignCredits(userId: string, credits: number, adminUid: string, adminEmail: string): Promise<void> {
   const userRef = doc(db, 'users', userId)
+  const userSnap = await getDoc(userRef)
+  const oldCredits = userSnap.data()?.creditsAvailable || 0
+  const newCredits = oldCredits + credits
+  
   await updateDoc(userRef, {
     creditsAvailable: increment(credits),
   })
+  
+  await addUserAuditLogEntry(userId, 'credits_added', adminUid, adminEmail, {
+    oldValue: oldCredits,
+    newValue: newCredits,
+  })
+}
+
+export async function setUserCredits(
+  userId: string,
+  creditsAvailable: number,
+  adminUid: string,
+  adminEmail: string
+): Promise<void> {
+  const userRef = doc(db, 'users', userId)
+  const userSnap = await getDoc(userRef)
+  const oldCredits = userSnap.data()?.creditsAvailable || 0
+  
+  await updateDoc(userRef, { creditsAvailable })
+  
+  if (oldCredits !== creditsAvailable) {
+    await addUserAuditLogEntry(userId, 'credits_set', adminUid, adminEmail, {
+      oldValue: oldCredits,
+      newValue: creditsAvailable,
+    })
+  }
 }
 
 // ============================================

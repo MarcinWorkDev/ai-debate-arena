@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
-import { getAllUsers, approveUser, blockUser, unblockUser, assignCredits, setUserCredits } from '../../lib/db'
+import { Link } from 'react-router-dom'
+import { getAllUsers, approveUser, blockUser, unblockUser, assignCredits, setUserCredits } from '../../../lib/db'
+import { useAuth } from '../../../hooks/useAuth'
+import { LoadingSpinner } from '../../../shared/ui/LoadingSpinner'
 
 interface User {
   uid: string
@@ -14,7 +17,7 @@ interface User {
   creditsUsed: number
 }
 
-export function UserList() {
+export function AdminUserList() {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [creditsInput, setCreditsInput] = useState<Record<string, string>>({})
@@ -35,45 +38,48 @@ export function UserList() {
     loadUsers()
   }, [])
 
+  const { user, profile } = useAuth()
+
   const handleApprove = async (uid: string) => {
-    await approveUser(uid)
+    if (!user?.uid || !profile?.email) return
+    await approveUser(uid, user.uid, profile.email)
     loadUsers()
   }
 
   const handleBlock = async (uid: string) => {
-    await blockUser(uid)
+    if (!user?.uid || !profile?.email) return
+    await blockUser(uid, user.uid, profile.email)
     loadUsers()
   }
 
   const handleUnblock = async (uid: string) => {
-    await unblockUser(uid)
+    if (!user?.uid || !profile?.email) return
+    await unblockUser(uid, user.uid, profile.email)
     loadUsers()
   }
 
   const handleAddCredits = async (uid: string) => {
+    if (!user?.uid || !profile?.email) return
     const amount = parseInt(creditsInput[uid] || '0', 10)
     if (amount > 0) {
-      await assignCredits(uid, amount)
+      await assignCredits(uid, amount, user.uid, profile.email)
       setCreditsInput(prev => ({ ...prev, [uid]: '' }))
       loadUsers()
     }
   }
 
   const handleSetCredits = async (uid: string) => {
+    if (!user?.uid || !profile?.email) return
     const amount = parseInt(creditsInput[uid] || '0', 10)
     if (amount >= 0) {
-      await setUserCredits(uid, amount)
+      await setUserCredits(uid, amount, user.uid, profile.email)
       setCreditsInput(prev => ({ ...prev, [uid]: '' }))
       loadUsers()
     }
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
-      </div>
-    )
+    return <LoadingSpinner size="sm" className="py-12" />
   }
 
   return (
@@ -91,30 +97,35 @@ export function UserList() {
           {users.map((user) => (
             <tr key={user.uid} className="hover:bg-slate-800/30">
               <td className="px-4 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-slate-400 overflow-hidden">
-                    {user.photoURL ? (
-                      <img
-                        src={user.photoURL}
-                        alt=""
-                        className="w-8 h-8 rounded-full"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none'
-                          e.currentTarget.parentElement!.textContent = user.displayName?.[0] || user.email?.[0] || '?'
-                        }}
-                      />
-                    ) : (
-                      user.displayName?.[0] || user.email?.[0] || '?'
+                <Link
+                  to={`/admin/user/${user.uid}`}
+                  className="block"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-slate-400 overflow-hidden">
+                      {user.photoURL ? (
+                        <img
+                          src={user.photoURL}
+                          alt=""
+                          className="w-8 h-8 rounded-full"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none'
+                            e.currentTarget.parentElement!.textContent = user.displayName?.[0] || user.email?.[0] || '?'
+                          }}
+                        />
+                      ) : (
+                        user.displayName?.[0] || user.email?.[0] || '?'
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-white font-medium hover:text-blue-400 transition-colors">{user.displayName || 'No name'}</div>
+                      <div className="text-slate-400 text-sm">{user.email}</div>
+                    </div>
+                    {user.isAdmin && (
+                      <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded-full">Admin</span>
                     )}
                   </div>
-                  <div>
-                    <div className="text-white font-medium">{user.displayName || 'No name'}</div>
-                    <div className="text-slate-400 text-sm">{user.email}</div>
-                  </div>
-                  {user.isAdmin && (
-                    <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded-full">Admin</span>
-                  )}
-                </div>
+                </Link>
               </td>
               <td className="px-4 py-4">
                 {user.isBlocked ? (

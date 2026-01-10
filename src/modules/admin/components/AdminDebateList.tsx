@@ -1,17 +1,32 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { getAllDebates, type Debate } from '../../lib/db'
+import { getAllDebates, getAllUsers, type Debate } from '../../../lib/db'
+import { LoadingSpinner } from '../../../shared/ui/LoadingSpinner'
+import { StatusBadge } from '../../../shared/ui/StatusBadge'
 
 export function AdminDebateList() {
   const [debates, setDebates] = useState<Debate[]>([])
+  const [userEmailMap, setUserEmailMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       try {
-        const data = await getAllDebates()
-        setDebates(data)
+        const [debatesData, usersData] = await Promise.all([
+          getAllDebates(),
+          getAllUsers()
+        ])
+        setDebates(debatesData)
+        
+        // Create a map of userId -> email
+        const emailMap: Record<string, string> = {}
+        usersData.forEach((user: any) => {
+          if (user.uid && user.email) {
+            emailMap[user.uid] = user.email
+          }
+        })
+        setUserEmailMap(emailMap)
       } catch (err) {
         console.error('Error loading debates:', err)
       } finally {
@@ -22,11 +37,7 @@ export function AdminDebateList() {
   }, [])
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
-      </div>
-    )
+    return <LoadingSpinner size="sm" className="py-12" />
   }
 
   return (
@@ -35,7 +46,7 @@ export function AdminDebateList() {
         <thead>
           <tr className="bg-slate-800/50">
             <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Topic</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">User ID</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">User Email</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Status</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Credits Used</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Public</th>
@@ -47,7 +58,7 @@ export function AdminDebateList() {
             <tr key={debate.id} className="hover:bg-slate-800/30">
               <td className="px-4 py-4">
                 <Link
-                  to={`/debate/${debate.id}`}
+                  to={`/debate/${debate.id}?from=admin`}
                   className="block"
                 >
                   <div className="text-white font-medium truncate max-w-xs hover:text-blue-400 transition-colors">{debate.title}</div>
@@ -56,31 +67,26 @@ export function AdminDebateList() {
               </td>
               <td className="px-4 py-4">
                 <Link
-                  to={`/debate/${debate.id}`}
+                  to={`/admin/user/${debate.userId}`}
                   className="block"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="text-slate-400 text-sm font-mono truncate max-w-[120px] hover:text-blue-400 transition-colors">{debate.userId}</div>
+                  <div className="text-slate-400 text-sm truncate max-w-[200px] hover:text-blue-400 transition-colors">
+                    {userEmailMap[debate.userId] || debate.userId}
+                  </div>
                 </Link>
               </td>
               <td className="px-4 py-4">
                 <Link
-                  to={`/debate/${debate.id}`}
+                  to={`/debate/${debate.id}?from=admin`}
                   className="block"
                 >
-                  <span className={`px-2 py-1 text-xs rounded-full ${
-                    debate.status === 'finished'
-                      ? 'bg-green-500/20 text-green-400'
-                      : debate.status === 'running'
-                      ? 'bg-blue-500/20 text-blue-400'
-                      : 'bg-slate-500/20 text-slate-400'
-                  }`}>
-                    {debate.status}
-                  </span>
+                  <StatusBadge status={debate.status} type="debate" />
                 </Link>
               </td>
               <td className="px-4 py-4">
                 <Link
-                  to={`/debate/${debate.id}`}
+                  to={`/debate/${debate.id}?from=admin`}
                   className="block text-white hover:text-blue-400 transition-colors"
                 >
                   {debate.creditsUsed}
@@ -99,7 +105,7 @@ export function AdminDebateList() {
                   </a>
                 ) : (
                   <Link
-                    to={`/debate/${debate.id}`}
+                    to={`/debate/${debate.id}?from=admin`}
                     className="block text-slate-500 text-sm hover:text-blue-400 transition-colors"
                   >
                     Private
@@ -108,7 +114,7 @@ export function AdminDebateList() {
               </td>
               <td className="px-4 py-4">
                 <Link
-                  to={`/debate/${debate.id}`}
+                  to={`/debate/${debate.id}?from=admin`}
                   className="block text-slate-400 text-sm hover:text-blue-400 transition-colors"
                 >
                   {debate.createdAt.toLocaleDateString()}

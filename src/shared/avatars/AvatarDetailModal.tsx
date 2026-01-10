@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../../hooks/useAuth'
@@ -9,6 +9,7 @@ import { AvatarForm } from './AvatarForm'
 import { PromotionWarningModal } from './PromotionWarningModal'
 import { SuggestionForm } from './SuggestionForm'
 import { ForkConfirmModal } from './ForkConfirmModal'
+import { BlockAvatarModal } from '../../modules/admin/components/BlockAvatarModal'
 
 interface AvatarDetailModalProps {
   avatarId: string
@@ -23,11 +24,12 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
     selectedAvatar: avatar,
     selectedAvatarChangelog: changelog,
     selectedAvatarSuggestions: suggestions,
-    loading,
     loadAvatarDetails,
     deleteAvatar,
     requestPromotion,
     requestUnblock,
+    blockAvatar,
+    unblockAvatar,
     clearSelection,
   } = useAvatars()
 
@@ -37,40 +39,76 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
   const [showSuggestionForm, setShowSuggestionForm] = useState(false)
   const [showForkConfirm, setShowForkConfirm] = useState(false)
   const [showUnblockForm, setShowUnblockForm] = useState(false)
+  const [showBlockModal, setShowBlockModal] = useState(false)
   const [unblockReason, setUnblockReason] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const loadAvatarDetailsRef = useRef(loadAvatarDetails)
+  const clearSelectionRef = useRef(clearSelection)
+
+  // Keep refs updated
+  useEffect(() => {
+    loadAvatarDetailsRef.current = loadAvatarDetails
+    clearSelectionRef.current = clearSelection
+  }, [loadAvatarDetails, clearSelection])
 
   useEffect(() => {
+    if (!avatarId) {
+      // Clear selection when modal closes
+      clearSelectionRef.current()
+      return
+    }
+    
+    let cancelled = false
     const load = async () => {
       try {
+        setIsLoading(true)
         setLoadError(null)
-        await loadAvatarDetails(avatarId)
+        await loadAvatarDetailsRef.current(avatarId)
+        if (!cancelled) {
+          setIsLoading(false)
+        }
       } catch (err) {
-        console.error('Failed to load avatar details:', err)
-        setLoadError(err instanceof Error ? err.message : 'Failed to load avatar')
+        if (!cancelled) {
+          console.error('Failed to load avatar details:', err)
+          setLoadError(err instanceof Error ? err.message : 'Failed to load avatar')
+          setIsLoading(false)
+        }
       }
     }
     load()
     return () => {
-      clearSelection()
+      cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avatarId])
 
+  const handleClose = () => {
+    setIsLoading(false)
+    onClose()
+  }
+
   const isOwner = avatar?.authorUid === user?.uid
-  const canEdit = isOwner && avatar?.visibility === 'private' && avatar?.status === 'active'
+  const isAdmin = profile?.isAdmin === true
+  // Owner can edit private avatars, admin can edit any avatar
+  const canEdit = (isOwner && avatar?.visibility === 'private' && avatar?.status === 'active') ||
+                  (isAdmin && avatar?.status === 'active')
   const canDelete = isOwner && avatar?.visibility === 'private'
   const canPromote =
     isOwner &&
     avatar?.visibility === 'private' &&
     avatar?.status === 'active' &&
     avatar?.promotionStatus !== 'pending'
-  const canSuggestChanges = avatar?.visibility === 'public' && avatar?.status === 'active' && !isOwner
+  // Suggestions available for logged-in users (including owner) for public avatars
+  const canSuggestChanges = !!user && avatar?.visibility === 'public' && avatar?.status === 'active'
   const canFork = avatar?.visibility === 'public' && avatar?.status === 'active'
   const canRequestUnblock =
     isOwner && avatar?.status === 'blocked' && !avatar?.unblockRequested
+  // Admin can block/unblock any avatar
+  const canBlock = isAdmin && avatar?.status === 'active'
+  const canUnblock = isAdmin && avatar?.status === 'blocked'
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this avatar? This cannot be undone.')) return
@@ -102,13 +140,27 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
     }
   }
 
+  const handleUnblock = async () => {
+    if (!confirm('Are you sure you want to unblock this avatar?')) return
+    setActionLoading(true)
+    setError(null)
+    try {
+      await unblockAvatar(avatarId)
+      await loadAvatarDetails(avatarId)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to unblock avatar')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   if (loadError) {
     return createPortal(
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
         <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 max-w-md">
           <p className="text-red-400 mb-4">{loadError}</p>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg"
           >
             Close
@@ -119,7 +171,7 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
     )
   }
 
-  if (loading || !avatar) {
+  if (isLoading || !avatar) {
     return createPortal(
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
         <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -135,7 +187,7 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-        onClick={onClose}
+        onClick={handleClose}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -160,7 +212,7 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
               <div className="flex items-center gap-2">
                 <AvatarStatusBadge avatar={avatar} />
                 <button
-                  onClick={onClose}
+                  onClick={handleClose}
                   className="text-slate-400 hover:text-white transition-colors p-1"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -253,6 +305,26 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
                   </div>
                 )}
 
+                {/* Suggestion info for public avatars */}
+                {canSuggestChanges && (
+                  <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="text-purple-400 font-medium">Have suggestions for this avatar?</p>
+                        <p className="text-xs text-purple-300/70 mt-1">
+                          Propose changes to improve this public avatar. Your suggestions will be reviewed by admins.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setShowSuggestionForm(true)}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
+                      >
+                        Suggest Changes
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Persona */}
                 <div>
                   <h3 className="text-sm font-medium text-slate-300 mb-2">Persona</h3>
@@ -284,45 +356,62 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
             {activeTab === 'changelog' && <ChangelogView changelog={changelog} />}
 
             {activeTab === 'suggestions' && (
-              <div className="space-y-3">
-                {suggestions.length === 0 ? (
-                  <p className="text-slate-400 text-center py-4">No suggestions yet.</p>
-                ) : (
-                  suggestions.map((suggestion) => (
-                    <div
-                      key={suggestion.id}
-                      className="p-4 bg-slate-800/50 rounded-lg border border-slate-700"
+              <div className="space-y-4">
+                {canSuggestChanges && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => setShowSuggestionForm(true)}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors"
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-slate-400">{suggestion.submitterEmail}</span>
-                        <span
-                          className={`px-2 py-0.5 text-xs rounded-full ${
-                            suggestion.status === 'pending'
-                              ? 'bg-yellow-500/20 text-yellow-400'
-                              : suggestion.status === 'approved'
-                              ? 'bg-green-500/20 text-green-400'
-                              : 'bg-red-500/20 text-red-400'
-                          }`}
-                        >
-                          {suggestion.status}
-                        </span>
-                      </div>
-                      <div className="text-sm text-slate-300">
-                        {Object.entries(suggestion.suggestedChanges).map(([key, value]) => (
-                          <div key={key}>
-                            <span className="text-slate-500">{key}:</span> {value}
-                          </div>
-                        ))}
-                      </div>
-                      {suggestion.submissionReason && (
-                        <p className="text-xs text-slate-500 mt-2">Reason: {suggestion.submissionReason}</p>
-                      )}
-                      {suggestion.rejectionReason && (
-                        <p className="text-xs text-red-400 mt-2">Rejected: {suggestion.rejectionReason}</p>
+                      + Suggest Changes
+                    </button>
+                  </div>
+                )}
+                <div className="space-y-3">
+                  {suggestions.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-slate-400 mb-2">No suggestions yet.</p>
+                      {canSuggestChanges && (
+                        <p className="text-slate-500 text-sm">Be the first to suggest improvements!</p>
                       )}
                     </div>
-                  ))
-                )}
+                  ) : (
+                    suggestions.map((suggestion) => (
+                      <div
+                        key={suggestion.id}
+                        className="p-4 bg-slate-800/50 rounded-lg border border-slate-700"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm text-slate-400">{suggestion.submitterEmail}</span>
+                          <span
+                            className={`px-2 py-0.5 text-xs rounded-full ${
+                              suggestion.status === 'pending'
+                                ? 'bg-yellow-500/20 text-yellow-400'
+                                : suggestion.status === 'approved'
+                                ? 'bg-green-500/20 text-green-400'
+                                : 'bg-red-500/20 text-red-400'
+                            }`}
+                          >
+                            {suggestion.status}
+                          </span>
+                        </div>
+                        <div className="text-sm text-slate-300">
+                          {Object.entries(suggestion.suggestedChanges).map(([key, value]) => (
+                            <div key={key}>
+                              <span className="text-slate-500">{key}:</span> {value}
+                            </div>
+                          ))}
+                        </div>
+                        {suggestion.submissionReason && (
+                          <p className="text-xs text-slate-500 mt-2">Reason: {suggestion.submissionReason}</p>
+                        )}
+                        {suggestion.rejectionReason && (
+                          <p className="text-xs text-red-400 mt-2">Rejected: {suggestion.rejectionReason}</p>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -365,54 +454,88 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
 
           {/* Actions */}
           <div className="p-6 border-t border-slate-800 flex flex-wrap gap-2">
-            {canEdit && (
-              <button
-                onClick={() => setShowEditForm(true)}
-                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors"
-              >
-                Edit
-              </button>
-            )}
-            {canPromote && (
-              <button
-                onClick={() => setShowPromotionWarning(true)}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors"
-              >
-                Promote to Public
-              </button>
-            )}
-            {canSuggestChanges && (
-              <button
-                onClick={() => setShowSuggestionForm(true)}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors"
-              >
-                Suggest Changes
-              </button>
-            )}
-            {canFork && (
-              <button
-                onClick={() => setShowForkConfirm(true)}
-                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm rounded-lg transition-colors"
-              >
-                Fork to Private
-              </button>
-            )}
-            {canRequestUnblock && !showUnblockForm && (
-              <button
-                onClick={() => setShowUnblockForm(true)}
-                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded-lg transition-colors"
-              >
-                Request Unblock
-              </button>
-            )}
-            {canDelete && (
-              <button
-                onClick={handleDelete}
-                disabled={actionLoading}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
-              >
-                Delete
-              </button>
+            {isAdmin ? (
+              <>
+                {/* Admin actions: only Edit and Block/Unblock */}
+                {canEdit && (
+                  <button
+                    onClick={() => setShowEditForm(true)}
+                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors"
+                  >
+                    Edit
+                  </button>
+                )}
+                {canBlock && (
+                  <button
+                    onClick={() => setShowBlockModal(true)}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors"
+                  >
+                    Block
+                  </button>
+                )}
+                {canUnblock && (
+                  <button
+                    onClick={handleUnblock}
+                    disabled={actionLoading}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {actionLoading ? 'Unblocking...' : 'Unblock'}
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Regular user actions */}
+                {canEdit && (
+                  <button
+                    onClick={() => setShowEditForm(true)}
+                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors"
+                  >
+                    Edit
+                  </button>
+                )}
+                {canPromote && (
+                  <button
+                    onClick={() => setShowPromotionWarning(true)}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors"
+                  >
+                    Promote to Public
+                  </button>
+                )}
+                {canSuggestChanges && (
+                  <button
+                    onClick={() => setShowSuggestionForm(true)}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors"
+                  >
+                    Suggest Changes
+                  </button>
+                )}
+                {canFork && (
+                  <button
+                    onClick={() => setShowForkConfirm(true)}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm rounded-lg transition-colors"
+                  >
+                    Fork to Private
+                  </button>
+                )}
+                {canRequestUnblock && !showUnblockForm && (
+                  <button
+                    onClick={() => setShowUnblockForm(true)}
+                    className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded-lg transition-colors"
+                  >
+                    Request Unblock
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    onClick={handleDelete}
+                    disabled={actionLoading}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                )}
+              </>
             )}
           </div>
         </motion.div>
@@ -454,6 +577,16 @@ export function AvatarDetailModal({ avatarId, onClose }: AvatarDetailModalProps)
           avatar={avatar}
           onClose={() => setShowForkConfirm(false)}
           onSuccess={onClose}
+        />
+      )}
+      {showBlockModal && avatar && (
+        <BlockAvatarModal
+          avatar={avatar}
+          onClose={() => setShowBlockModal(false)}
+          onSuccess={() => {
+            setShowBlockModal(false)
+            loadAvatarDetails(avatarId)
+          }}
         />
       )}
     </AnimatePresence>,

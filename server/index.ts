@@ -48,7 +48,6 @@ if (!admin.apps.length) {
       admin.initializeApp({
         projectId: process.env.FIREBASE_PROJECT_ID
       })
-    } else {
     }
   } catch (error) {
     console.error('❌ Error initializing Firebase Admin:', error)
@@ -359,16 +358,55 @@ app.post('/api/chat', verifyToken, async (req, res) => {
         totalTokens?: number
         reasoningTokens?: number
         reasoningTokensUsed?: number
+        // AI SDK might use different field names
+        inputTokens?: number
+        outputTokens?: number
+        [key: string]: any // Allow any other fields
       } | null
       
+      // Log usage for debugging - log the entire object to see what we get
+      if (usage) {
+        console.log('📊 Token usage from OpenAI (raw object):', usage)
+        console.log('📊 Token usage from OpenAI (stringified):', JSON.stringify(usage, null, 2))
+        console.log('📊 Token usage from OpenAI (all keys):', Object.keys(usage))
+        console.log('📊 Token usage from OpenAI (values):', {
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          totalTokens: usage.totalTokens,
+          reasoningTokens: usage.reasoningTokens,
+          reasoningTokensUsed: usage.reasoningTokensUsed,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          // Check for any other possible fields
+          ...Object.fromEntries(
+            Object.entries(usage).filter(([key]) => 
+              !['promptTokens', 'completionTokens', 'totalTokens', 'reasoningTokens', 'reasoningTokensUsed', 'inputTokens', 'outputTokens'].includes(key)
+            )
+          )
+        })
+      } else {
+        console.log('⚠️ Token usage from OpenAI is null or undefined!')
+      }
 
       // Send usage info before [DONE]
+      // Map AI SDK field names to our API field names:
+      // - promptTokens (from AI SDK) -> promptTokens (to client, will be mapped to inputTokens in DB)
+      // - completionTokens (from AI SDK) -> completionTokens (to client, will be mapped to outputTokens in DB)
+      // Try multiple possible field names from AI SDK as fallback
       const usageData = {
-        promptTokens: usage?.promptTokens ?? 0,
-        completionTokens: usage?.completionTokens ?? 0,
-        totalTokens: usage?.totalTokens ?? 0,
-        reasoningTokens: usage?.reasoningTokens ?? usage?.reasoningTokensUsed ?? 0
+        promptTokens: typeof usage?.promptTokens === 'number' ? usage.promptTokens : (typeof usage?.inputTokens === 'number' ? usage.inputTokens : 0),
+        completionTokens: typeof usage?.completionTokens === 'number' ? usage.completionTokens : (typeof usage?.outputTokens === 'number' ? usage.outputTokens : 0),
+        totalTokens: typeof usage?.totalTokens === 'number' ? usage.totalTokens : 0,
+        reasoningTokens: typeof usage?.reasoningTokens === 'number' ? usage.reasoningTokens : (typeof usage?.reasoningTokensUsed === 'number' ? usage.reasoningTokensUsed : 0)
       }
+      
+      console.log('📤 Sending usage data to client:', usageData)
+      console.log('📤 Usage data type check:', {
+        promptTokens: { value: usageData.promptTokens, type: typeof usageData.promptTokens },
+        completionTokens: { value: usageData.completionTokens, type: typeof usageData.completionTokens },
+        totalTokens: { value: usageData.totalTokens, type: typeof usageData.totalTokens },
+        reasoningTokens: { value: usageData.reasoningTokens, type: typeof usageData.reasoningTokens },
+      })
       
       if (safeWrite(`data: ${JSON.stringify({ usage: usageData })}\n\n`)) {
         safeWrite('data: [DONE]\n\n')

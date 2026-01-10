@@ -84,7 +84,7 @@ export const useDebateStore = create<DebateState>((set, get) => ({
   creditsUsedInSession: 0,
 
   // User participation
-  userName: 'You',
+  userName: '',
   handRaised: false,
   isUserTurn: false,
 

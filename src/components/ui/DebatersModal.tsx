@@ -39,8 +39,8 @@ export function DebatersModal({ isOpen, onClose }: DebatersModalProps) {
     }
   }
 
-  // Filter to only active avatars (not blocked)
-  const availableAvatars = allAvatars.filter((a) => a.status === 'active')
+  // Filter to only active avatars (not blocked) and exclude moderators
+  const availableAvatars = allAvatars.filter((a) => a.status === 'active' && !a.isModerator)
 
   const modalContent = (
     <AnimatePresence>
@@ -84,7 +84,7 @@ export function DebatersModal({ isOpen, onClose }: DebatersModalProps) {
                   )}
                 </p>
                 <Link
-                  to="/avatars"
+                  to="/user?tab=avatars"
                   onClick={onClose}
                   className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
                 >
@@ -103,7 +103,7 @@ export function DebatersModal({ isOpen, onClose }: DebatersModalProps) {
                 <div className="text-center py-12">
                   <p className="text-slate-400 mb-4">No avatars available.</p>
                   <Link
-                    to="/avatars"
+                    to="/user?tab=avatars"
                     onClick={onClose}
                     className="text-blue-400 hover:text-blue-300 transition-colors"
                   >

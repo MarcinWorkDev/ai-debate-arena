@@ -1,7 +1,8 @@
 import { useCallback } from 'react'
 import { useDebateStore } from '../stores/debateStore'
 import { useAuthStore } from '../stores/authStore'
-import { agents, selectNextSpeaker, moderator, createUserAgent, allAvailableAgents } from '../lib/agents'
+import { useAvatarStore } from '../stores/avatarStore'
+import { agents, selectNextSpeaker, moderator, createUserAgent, allAvailableAgents, avatarsToAgents } from '../lib/agents'
 import { streamChatWithUsage } from '../lib/api'
 import { updateUserCredits, createDebate, addMessage as addMessageToDb, updateDebate, addCreditsToDebate, getActiveDebate, getMessages } from '../lib/db'
 import type { DebateMessage } from '../lib/db'
@@ -61,20 +62,41 @@ export function useDebate() {
     const store = useDebateStore.getState()
     if (!store.debateId) return
 
+    // Ensure all token values are numbers, not undefined
+    const finalInputTokens = typeof inputTokens === 'number' ? inputTokens : 0
+    const finalOutputTokens = typeof outputTokens === 'number' ? outputTokens : 0
+    const finalReasoningTokens = typeof reasoningTokens === 'number' ? reasoningTokens : 0
+    const finalTokensUsed = typeof tokensUsed === 'number' ? tokensUsed : 0
+
+    const messageData = {
+      avatarId: agentId,
+      avatarName: agentName,
+      avatarColor: agentColor,
+      avatarModel: agentModel,
+      content,
+      timestamp: Date.now(),
+      tokensUsed: finalTokensUsed,
+      inputTokens: finalInputTokens,
+      outputTokens: finalOutputTokens,
+      reasoningTokens: finalReasoningTokens,
+      parentMessageId: null,
+    }
+
+    // Log what we're saving with detailed info
+    console.log('💾 Saving message to Firestore:', {
+      debateId: store.debateId,
+      agentName,
+      tokensUsed: messageData.tokensUsed,
+      inputTokens: messageData.inputTokens,
+      outputTokens: messageData.outputTokens,
+      reasoningTokens: messageData.reasoningTokens,
+      rawInputs: { tokensUsed, inputTokens, outputTokens, reasoningTokens },
+      messageDataKeys: Object.keys(messageData),
+      messageDataValues: Object.values(messageData),
+    })
+
     try {
-      await addMessageToDb(store.debateId, {
-        avatarId: agentId,
-        avatarName: agentName,
-        avatarColor: agentColor,
-        avatarModel: agentModel,
-        content,
-        timestamp: Date.now(),
-        tokensUsed,
-        inputTokens: inputTokens ?? 0,
-        outputTokens: outputTokens ?? 0,
-        reasoningTokens: reasoningTokens ?? 0,
-        parentMessageId: null,
-      })
+      await addMessageToDb(store.debateId, messageData)
     } catch (error) {
       console.error('Error saving message to Firestore:', error)
     }
@@ -188,18 +210,32 @@ ${langInstruction}`
         }
       )
 
-      const tokensUsed = result.usage?.totalTokens || 0
+      // Extract token usage with proper defaults
+      // Map API field names to database field names:
+      // - promptTokens (from API) -> inputTokens (in DB)
+      // - completionTokens (from API) -> outputTokens (in DB)
+      const inputTokens = result.usage?.promptTokens ?? 0
+      const outputTokens = result.usage?.completionTokens ?? 0
+      const reasoningTokens = result.usage?.reasoningTokens ?? 0
+      const tokensUsed = result.usage?.totalTokens ?? (inputTokens + outputTokens + reasoningTokens)
       const finalContent = result.content || useDebateStore.getState().currentStreamingContent || ''
+      
+      // Log token usage for debugging
+      if (tokensUsed > 0 || inputTokens > 0 || outputTokens > 0 || reasoningTokens > 0) {
+        console.log('Moderator token usage:', {
+          total: tokensUsed,
+          input: inputTokens,
+          output: outputTokens,
+          reasoning: reasoningTokens,
+          usage: result.usage
+        })
+      }
       
       // Finalize message with content
       useDebateStore.getState().finalizeMessage(tokensUsed)
       useDebateStore.getState().addTokensUsed(tokensUsed)
 
       // Save to Firestore
-      const inputTokens = result.usage?.promptTokens ?? 0
-      const outputTokens = result.usage?.completionTokens ?? 0
-      const reasoningTokens = result.usage?.reasoningTokens ?? 0
-      
       await saveMessageToDb(
         moderator.id,
         moderator.name,
@@ -313,10 +349,15 @@ ${langInstruction}`
       ? store.messages[store.messages.length - 1].agentId
       : null
 
-    // Get selected agents for this debate
-    const selectedAgents = store.selectedAgentIds.length > 0
-      ? allAvailableAgents.filter(agent => store.selectedAgentIds.includes(agent.id))
-      : agents
+    // Get selected avatars from database and convert to agents
+    const avatarStore = useAvatarStore.getState()
+    const allAvatars = avatarStore.getVisibleAvatars()
+    const selectedAvatars = store.selectedAgentIds.length > 0
+      ? allAvatars.filter(avatar => store.selectedAgentIds.includes(avatar.id) && !avatar.isModerator)
+      : []
+    
+    // Convert avatars to agents
+    const selectedAgents = avatarsToAgents(selectedAvatars)
 
     const nextSpeaker = selectNextSpeaker(lastSpeakerId, store.handRaised, selectedAgents)
 
@@ -380,16 +421,34 @@ CRITICAL RULES:
 
       const currentStatus = useDebateStore.getState().status
       if (currentStatus === 'running') {
-        const tokensUsed = result.usage?.totalTokens || 0
+        // Log raw result.usage first
+        console.log('🔍 Raw result.usage:', result.usage)
+        
+        // Extract token usage with proper defaults
+        // Map API field names to database field names:
+        // - promptTokens (from API) -> inputTokens (in DB)
+        // - completionTokens (from API) -> outputTokens (in DB)
+        const inputTokens = result.usage?.promptTokens ?? 0
+        const outputTokens = result.usage?.completionTokens ?? 0
+        const reasoningTokens = result.usage?.reasoningTokens ?? 0
+        const tokensUsed = result.usage?.totalTokens ?? (inputTokens + outputTokens + reasoningTokens)
+        
+        // Log token usage for debugging
+        console.log('📊 Extracted token usage:', {
+          total: tokensUsed,
+          input: inputTokens,
+          output: outputTokens,
+          reasoning: reasoningTokens,
+          rawUsage: result.usage,
+          hasUsage: !!result.usage
+        })
+        
         useDebateStore.getState().finalizeMessage(tokensUsed)
         useDebateStore.getState().addTokensUsed(tokensUsed)
         useDebateStore.getState().incrementRound()
 
         // Save to Firestore
         const store = useDebateStore.getState()
-        const inputTokens = result.usage?.promptTokens ?? 0
-        const outputTokens = result.usage?.completionTokens ?? 0
-        const reasoningTokens = result.usage?.reasoningTokens ?? 0
         
         await saveMessageToDb(
           nextAgent.id,
@@ -537,16 +596,15 @@ CRITICAL RULES:
     }
 
     try {
-      // Get selected agents or default to active agents
-      let selectedAgents: typeof allAvailableAgents = []
-      if (store.selectedAgentIds.length > 0) {
-        selectedAgents = allAvailableAgents.filter(agent => 
-          store.selectedAgentIds.includes(agent.id)
-        )
-      } else {
-        // Default to active agents if none selected
-        selectedAgents = agents
-      }
+      // Get selected avatars from database and convert to agents
+      const avatarStore = useAvatarStore.getState()
+      const allAvatars = avatarStore.getVisibleAvatars()
+      const selectedAvatars = store.selectedAgentIds.length > 0
+        ? allAvatars.filter(avatar => store.selectedAgentIds.includes(avatar.id) && !avatar.isModerator)
+        : []
+      
+      // Convert avatars to agents
+      const selectedAgents = avatarsToAgents(selectedAvatars)
       
       // Add moderator (always included)
       const allAgents = [...selectedAgents, moderator]
@@ -681,6 +739,12 @@ CRITICAL RULES:
 
       // Set roundCount
       store.setRoundCount(debate.roundCount)
+
+      // Restore selected agent IDs from avatarsSnapshot (exclude moderator and user)
+      const selectedIds = debate.avatarsSnapshot
+        .filter(snapshot => snapshot.avatarId && snapshot.avatarId !== 'moderator' && snapshot.avatarId !== 'user')
+        .map(snapshot => snapshot.avatarId!)
+      store.setSelectedAgentIds(selectedIds)
 
       // Don't auto-continue debates - user must manually resume
       // This prevents debates from continuing after pause/reset

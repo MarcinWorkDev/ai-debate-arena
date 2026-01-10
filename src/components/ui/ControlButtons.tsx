@@ -1,11 +1,16 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useDebate } from '../../hooks/useDebate'
+import { useDebateStore } from '../../stores/debateStore'
 import { NoCreditsModal } from './NoCreditsModal'
 
 export function ControlButtons() {
   const { status, startDebate, pauseDebate, resumeDebate, resetDebate, topic } = useDebate()
+  const selectedAgentIds = useDebateStore((state) => state.selectedAgentIds)
   const [showNoCreditsModal, setShowNoCreditsModal] = useState(false)
+  
+  // Check if minimum 2 debaters are selected
+  const canStart = topic.trim() && selectedAgentIds.length >= 2
 
   const handleStartDebate = async () => {
     const result = await startDebate()
@@ -21,7 +26,7 @@ export function ControlButtons() {
         {status === 'idle' && (
           <Button
             onClick={handleStartDebate}
-            disabled={!topic.trim()}
+            disabled={!canStart}
             variant="primary"
           >
             Start Debate
