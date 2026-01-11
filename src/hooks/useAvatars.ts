@@ -16,7 +16,6 @@ export function useAvatars() {
     selectedAvatarChangelog,
     selectedAvatarSuggestions,
     loading,
-    migrationComplete,
     getVisibleAvatars,
   } = useAvatarStore()
 
@@ -285,34 +284,6 @@ export function useAvatars() {
     [user, loadUserAvatars]
   )
 
-  // ============================================
-  // Migration
-  // ============================================
-
-  const runMigration = useCallback(async () => {
-    const store = useAvatarStore.getState()
-    if (store.migrationComplete) return
-
-    try {
-      const needsMigration = await avatarDb.checkMigrationNeeded()
-      if (needsMigration) {
-        await avatarDb.migrateHardcodedAgents()
-      }
-      store.setMigrationComplete(true)
-    } catch (err) {
-      console.error('Migration error:', err)
-    }
-  }, [])
-
-  const linkMigratedAvatars = useCallback(async () => {
-    if (!user?.email) return
-    try {
-      await avatarDb.linkMigratedAvatarsToAuthor(user.email, user.uid)
-    } catch (err) {
-      console.error('Error linking migrated avatars:', err)
-    }
-  }, [user])
-
   return {
     // State
     userAvatars,
@@ -325,7 +296,6 @@ export function useAvatars() {
     selectedAvatarChangelog,
     selectedAvatarSuggestions,
     loading,
-    migrationComplete,
 
     // Computed
     visibleAvatars: getVisibleAvatars(),
@@ -362,10 +332,6 @@ export function useAvatars() {
 
     // Fork
     forkAvatar,
-
-    // Migration
-    runMigration,
-    linkMigratedAvatars,
 
     // Clear selection
     clearSelection: () => {

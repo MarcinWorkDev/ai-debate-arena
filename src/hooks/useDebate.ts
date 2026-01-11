@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import { useDebateStore } from '../stores/debateStore'
 import { useAuthStore } from '../stores/authStore'
 import { useAvatarStore } from '../stores/avatarStore'
-import { agents, selectNextSpeaker, moderator, createUserAgent, avatarsToAgents, type Agent } from '../lib/agents'
+import { selectNextSpeaker, moderator, createUserAgent, avatarsToAgents, type Agent } from '../lib/agents'
 import { streamChatWithUsage } from '../lib/api'
 import { updateUserCredits, createDebate, addMessage as addMessageToDb, updateDebate, addCreditsToDebate, getActiveDebate, getMessages } from '../lib/db'
 import type { DebateMessage } from '../lib/db'
@@ -154,7 +154,7 @@ export function useDebate() {
     const avatarStore = useAvatarStore.getState()
     const allAvatars = avatarStore.getVisibleAvatars()
     const selectedAvatars = store.selectedAgentIds.length > 0
-      ? allAvatars.filter(avatar => store.selectedAgentIds.includes(avatar.id) && !avatar.isModerator)
+      ? allAvatars.filter(avatar => store.selectedAgentIds.includes(avatar.id))
       : []
     const selectedAgents = avatarsToAgents(selectedAvatars)
 
@@ -786,11 +786,7 @@ export function useDebate() {
     const store = useDebateStore.getState()
     if (!store.topic.trim()) return false
 
-    const selectedCount = store.selectedAgentIds.length > 0
-      ? store.selectedAgentIds.length
-      : agents.filter(a => a.active).length
-
-    if (selectedCount < 2) {
+    if (store.selectedAgentIds.length < 2) {
       console.error('Cannot start debate: minimum 2 debaters required')
       return false
     }
@@ -810,7 +806,7 @@ export function useDebate() {
       const avatarStore = useAvatarStore.getState()
       const allAvatars = avatarStore.getVisibleAvatars()
       const selectedAvatars = store.selectedAgentIds.length > 0
-        ? allAvatars.filter(avatar => store.selectedAgentIds.includes(avatar.id) && !avatar.isModerator)
+        ? allAvatars.filter(avatar => store.selectedAgentIds.includes(avatar.id))
         : []
 
       const selectedAgents = avatarsToAgents(selectedAvatars)
@@ -948,7 +944,6 @@ export function useDebate() {
     currentStreamingContent,
     roundCount,
     maxRounds,
-    agents,
     userName,
     handRaised,
     isUserTurn,

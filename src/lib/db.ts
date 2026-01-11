@@ -90,7 +90,7 @@ export async function createDebate(
       position: agent.position,
       rotation: agent.rotation,
     }
-    
+
     // Only include optional fields if they are defined (Firestore doesn't accept undefined)
     if (agent.isModerator !== undefined) {
       snapshot.isModerator = agent.isModerator
@@ -98,7 +98,7 @@ export async function createDebate(
     if (agent.isHuman !== undefined) {
       snapshot.isHuman = agent.isHuman
     }
-    
+
     return snapshot
   })
 

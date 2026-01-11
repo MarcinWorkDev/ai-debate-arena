@@ -12,7 +12,6 @@ export interface Avatar {
   color: string
   model: string
   persona: string
-  isModerator?: boolean
   tags?: string[]
 
   // Ownership & visibility
@@ -117,7 +116,6 @@ export interface CreateAvatarInput {
   color: string
   model: string
   persona: string
-  isModerator?: boolean
   tags?: string[]
 }
 

@@ -12,7 +12,6 @@ import {
   limit,
   serverTimestamp,
   Timestamp,
-  writeBatch,
 } from 'firebase/firestore'
 import { db } from './firebase'
 import type {
@@ -26,7 +25,6 @@ import type {
   SuggestedChanges,
   AvatarSuggestionWithAvatarName,
 } from './types/avatar'
-import { corporateAgents, techAgents, moderator } from './agents'
 
 // ============================================
 // Helper: Convert Firestore document to Avatar
@@ -39,7 +37,6 @@ function docToAvatar(docSnap: { id: string; data: () => Record<string, unknown> 
     color: data.color as string,
     model: data.model as string,
     persona: data.persona as string,
-    isModerator: data.isModerator as boolean | undefined,
     tags: data.tags as string[] | undefined,
     authorEmail: data.authorEmail as string,
     authorUid: data.authorUid as string,
@@ -108,7 +105,6 @@ export async function createAvatar(
     color: data.color,
     model: data.model,
     persona: data.persona,
-    isModerator: data.isModerator || false,
     tags: data.tags || [],
     authorEmail,
     authorUid,
@@ -128,7 +124,6 @@ export async function createAvatar(
     id: docRef.id,
     ...data,
     tags: data.tags || [],
-    isModerator: data.isModerator || false,
     authorEmail,
     authorUid,
     visibility: 'private',
@@ -685,7 +680,6 @@ export async function forkAvatar(
     color: sourceAvatar.color,
     model: sourceAvatar.model,
     persona: sourceAvatar.persona,
-    isModerator: sourceAvatar.isModerator || false,
     tags: sourceAvatar.tags || [],
     authorEmail: newOwnerEmail,
     authorUid: newOwnerUid,
@@ -708,7 +702,6 @@ export async function forkAvatar(
     color: avatarData.color,
     model: avatarData.model,
     persona: avatarData.persona,
-    isModerator: avatarData.isModerator,
     authorEmail: newOwnerEmail,
     authorUid: newOwnerUid,
     visibility: 'private',
@@ -780,80 +773,3 @@ export async function getUnblockRequests(): Promise<Avatar[]> {
   return snapshot.docs.map(docToAvatar)
 }
 
-// ============================================
-// Migration
-// ============================================
-
-const MIGRATION_AUTHOR_EMAIL = 'marcin93li@gmail.com'
-
-export async function checkMigrationNeeded(): Promise<boolean> {
-  const q = query(
-    collection(db, 'avatars'),
-    where('isMigrated', '==', true),
-    limit(1)
-  )
-
-  const snapshot = await getDocs(q)
-  return snapshot.empty
-}
-
-export async function migrateHardcodedAgents(): Promise<void> {
-  const allAgents = [...corporateAgents, ...techAgents, moderator]
-  const batch = writeBatch(db)
-
-  for (const agent of allAgents) {
-    // Check if already migrated
-    const existingQuery = query(
-      collection(db, 'avatars'),
-      where('originalAgentId', '==', agent.id),
-      where('isMigrated', '==', true),
-      limit(1)
-    )
-    const existing = await getDocs(existingQuery)
-
-    if (existing.empty) {
-      const avatarRef = doc(collection(db, 'avatars'))
-      batch.set(avatarRef, {
-        name: agent.name,
-        color: agent.color,
-        model: agent.model,
-        persona: agent.persona,
-        isModerator: agent.isModerator || false,
-        tags: [],
-        authorEmail: MIGRATION_AUTHOR_EMAIL,
-        authorUid: '', // Will be linked when author logs in
-        visibility: 'public',
-        status: 'active',
-        promotionStatus: 'approved',
-        promotionApprovedAt: serverTimestamp(),
-        promotionApprovedBy: MIGRATION_AUTHOR_EMAIL,
-        isMigrated: true,
-        originalAgentId: agent.id,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      })
-    }
-  }
-
-  await batch.commit()
-}
-
-// Link migrated avatars to author when they log in
-export async function linkMigratedAvatarsToAuthor(
-  authorEmail: string,
-  authorUid: string
-): Promise<void> {
-  const q = query(
-    collection(db, 'avatars'),
-    where('authorEmail', '==', authorEmail),
-    where('authorUid', '==', '')
-  )
-
-  const snapshot = await getDocs(q)
-
-  for (const docSnap of snapshot.docs) {
-    await updateDoc(doc(db, 'avatars', docSnap.id), {
-      authorUid,
-    })
-  }
-}

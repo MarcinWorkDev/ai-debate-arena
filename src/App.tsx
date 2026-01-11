@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { NoCredits } from './components/auth/NoCredits'
@@ -11,31 +10,7 @@ import { UserDebatesPage } from './modules/user/pages/UserDebatesPage'
 import { UserPage } from './modules/user/pages/UserPage'
 import { AdminDashboard } from './modules/admin/pages/AdminDashboard'
 import { AdminUserViewPage } from './modules/admin/pages/AdminUserViewPage'
-import { useAuth } from './hooks/useAuth'
-import { useAvatars } from './hooks/useAvatars'
 import './styles/globals.css'
-
-// Component to handle avatar migration
-function AvatarMigration() {
-  const { runMigration, linkMigratedAvatars, migrationComplete } = useAvatars()
-  const { user, profile } = useAuth()
-
-  // Only run migration when an admin is logged in
-  useEffect(() => {
-    if (profile?.isAdmin && !migrationComplete) {
-      runMigration()
-    }
-  }, [profile?.isAdmin, runMigration, migrationComplete])
-
-  // Link migrated avatars when any user logs in
-  useEffect(() => {
-    if (user?.email && migrationComplete) {
-      linkMigratedAvatars()
-    }
-  }, [user?.email, migrationComplete, linkMigratedAvatars])
-
-  return null
-}
 
 function ProtectedApp() {
   return <DebatePage />
@@ -44,9 +19,6 @@ function ProtectedApp() {
 function App() {
   return (
     <BrowserRouter>
-      {/* Run migration on app load */}
-      <AvatarMigration />
-
       <Routes>
         {/* Public route - shared debates */}
         <Route path="/share/:slug" element={<PublicDebatePage />} />

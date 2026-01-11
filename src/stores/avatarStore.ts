@@ -24,7 +24,6 @@ interface AvatarState {
 
   // Loading states
   loading: boolean
-  migrationComplete: boolean
 
   // Actions
   setUserAvatars: (avatars: Avatar[]) => void
@@ -37,7 +36,6 @@ interface AvatarState {
   setSelectedAvatarChangelog: (changelog: AvatarChangelog[]) => void
   setSelectedAvatarSuggestions: (suggestions: AvatarSuggestion[]) => void
   setLoading: (loading: boolean) => void
-  setMigrationComplete: (complete: boolean) => void
 
   // Computed helpers
   getVisibleAvatars: () => Avatar[]
@@ -58,7 +56,6 @@ export const useAvatarStore = create<AvatarState>((set, get) => ({
   selectedAvatarChangelog: [],
   selectedAvatarSuggestions: [],
   loading: false,
-  migrationComplete: false,
 
   // Actions
   setUserAvatars: (avatars) => set({ userAvatars: avatars }),
@@ -71,7 +68,6 @@ export const useAvatarStore = create<AvatarState>((set, get) => ({
   setSelectedAvatarChangelog: (changelog) => set({ selectedAvatarChangelog: changelog }),
   setSelectedAvatarSuggestions: (suggestions) => set({ selectedAvatarSuggestions: suggestions }),
   setLoading: (loading) => set({ loading }),
-  setMigrationComplete: (complete) => set({ migrationComplete: complete }),
 
   // Computed: merge user avatars and public avatars, deduplicated
   getVisibleAvatars: () => {

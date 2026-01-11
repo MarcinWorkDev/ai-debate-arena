@@ -25,7 +25,9 @@ const AVAILABLE_COLORS = [
   '#84cc16', // lime
 ]
 
-const AVAILABLE_MODELS = ['gpt-4o', 'gpt-4o-mini']
+const AVAILABLE_MODELS = (import.meta.env.VITE_AVAILABLE_MODELS || 'gpt-4o,gpt-4o-mini')
+  .split(',')
+  .map((m: string) => m.trim())
 
 export function AvatarForm({ avatar, onClose, onSuccess }: AvatarFormProps) {
   const { createAvatar, updateAvatar } = useAvatars()

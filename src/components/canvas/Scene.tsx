@@ -22,9 +22,9 @@ export function Scene() {
     // Get all available avatars from database
     const allAvatars = getVisibleAvatars()
     
-    // Filter selected avatars (exclude moderators)
+    // Filter selected avatars
     const selectedAvatars = selectedAgentIds.length > 0
-      ? allAvatars.filter(avatar => selectedAgentIds.includes(avatar.id) && !avatar.isModerator)
+      ? allAvatars.filter(avatar => selectedAgentIds.includes(avatar.id))
       : []
     
     // Convert avatars to agents with calculated positions

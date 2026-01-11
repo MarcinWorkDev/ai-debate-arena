@@ -10,7 +10,9 @@ interface SuggestionFormProps {
   onSuccess: () => void
 }
 
-const AVAILABLE_MODELS = ['gpt-4o', 'gpt-4o-mini']
+const AVAILABLE_MODELS = (import.meta.env.VITE_AVAILABLE_MODELS || 'gpt-4o,gpt-4o-mini')
+  .split(',')
+  .map((m: string) => m.trim())
 
 export function SuggestionForm({ avatar, onClose, onSuccess }: SuggestionFormProps) {
   const { submitSuggestion } = useAvatars()

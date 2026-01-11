@@ -42,9 +42,9 @@ export function DebatersModal({ isOpen, onClose }: DebatersModalProps) {
     return combined
   }, [userAvatars, publicAvatars])
 
-  // Filter to only active avatars (not blocked) and exclude moderators
+  // Filter to only active avatars (not blocked)
   const activeAvatars = useMemo(() => {
-    return allAvatars.filter((a) => a.status === 'active' && !a.isModerator)
+    return allAvatars.filter((a) => a.status === 'active')
   }, [allAvatars])
 
   // Filter by selected tags
