@@ -8,6 +8,7 @@ export interface ModeratorSummaryData {
   points_of_tentative_agreement: string[]
   arguments_repeated_too_often: string[]
   missing_or_underexplored_angles: string[]
+  position_shifts: string[]
 }
 
 // Escalation data structure (JSON output from escalation rounds)

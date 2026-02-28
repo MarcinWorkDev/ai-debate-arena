@@ -37,6 +37,12 @@ ${format(moderatorSummary.points_of_tentative_agreement)}
 ${format(moderatorSummary.arguments_repeated_too_often)}
 ### Missing angles to explore:
 ${format(moderatorSummary.missing_or_underexplored_angles)}`
+
+    if (moderatorSummary.position_shifts && moderatorSummary.position_shifts.length > 0) {
+      moderatorSummarySection += `
+### Position shifts so far:
+${format(moderatorSummary.position_shifts)}`
+    }
   }
 
   let escalationSection = ''
@@ -72,11 +78,14 @@ CRITICAL RULES:
 5. Be conversational and consistent with your persona.
 6. Stay on topic.
 7. Do not repeat your own last main point.
-8. You must choose a side and argue for it. 
-   Do NOT propose compromise solutions ("balance", "hybrid", "both").
-   If you propose a compromise, you failed the role.
+8. Argue from YOUR professional expertise and priorities.
+   You may agree with a specific point if it genuinely aligns with your expertise,
+   but you MUST add a condition, caveat, or requirement from your domain.
+   Never agree unconditionally. Never flip your core position entirely.
+   Example: "That threshold approach works, but only if we add X" — good.
+   "I agree with everything" — bad.
 9. If an argument appears in "Repeated arguments to avoid", do NOT use it again.
-Prefer arguments from "Missing angles to explore".
+   Prefer arguments from "Missing angles to explore".
 10. ${langInstruction}${moderatorSummarySection}${escalationSection}`
 }
 
@@ -97,7 +106,8 @@ Return ONLY valid JSON in the following format:
   "core_disagreements": [ "..." ],
   "points_of_tentative_agreement": [ "..." ],
   "arguments_repeated_too_often": [ "..." ],
-  "missing_or_underexplored_angles": [ "..." ]
+  "missing_or_underexplored_angles": [ "..." ],
+  "position_shifts": [ "..." ]
 }
 
 Rules:
@@ -105,6 +115,7 @@ Rules:
 - Do NOT add new arguments.
 - Focus on what has already been said.
 - If a category is empty, return an empty array.
+- "position_shifts": Track any participant who changed, softened, or conditionally accepted an opposing argument. Format: "Role Name: shifted from X to Y because Z". If no shifts occurred, return an empty array.
 ${langInstruction}`
 }
 
@@ -137,6 +148,10 @@ Assume the debate is becoming:
 
 Your task is to identify what most participants are implicitly agreeing on
 and force a direct challenge.
+
+Your task is also to identify when participants are converging too easily
+and force them to stress-test their emerging agreement with edge cases,
+adversarial scenarios, or underrepresented stakeholder perspectives.
 
 ---
 
@@ -193,7 +208,8 @@ export function getFinalSummarySystemPrompt(
 Your task:
 1. Summarize the key arguments from each participant
 2. Identify main points of agreement and disagreement
-3. Provide a balanced conclusion
+3. Track how positions evolved during the debate
+4. Provide a balanced conclusion with actionable recommendations
 
 CRITICAL: Format your summary using structured Markdown - DO NOT write plain text with just bold/italics. Use proper structure:
 
@@ -204,6 +220,8 @@ Organize your summary with clear sections like:
 - ## Key Arguments
 - ## Points of Agreement
 - ## Points of Disagreement
+- ## How Positions Evolved
+- ## Consensus Recommendations
 - ## Conclusion
 
 ### Use Lists Extensively
@@ -222,23 +240,14 @@ For comparing positions or summarizing multiple participants:
 - *Italics* for participant names or emphasis
 - Inline code (backticks) for technical terms if needed
 
-### Structure Example:
-## Summary
+## CRITICAL: Actionable Conclusion
 
-### Key Arguments
-- **Participant A**: [argument]
-- **Participant B**: [argument]
+Your conclusion MUST include a concrete "Consensus Recommendations" section with:
+- Specific, numbered action items that emerged from the debate
+- For each item, note which participants support it and any remaining caveats
+- If no full consensus exists, clearly state what the majority position is and what the minority dissent is
 
-### Agreement Points
-1. Point 1
-2. Point 2
-
-### Disagreement Points
-- Issue 1: [description]
-- Issue 2: [description]
-
-## Conclusion
-[Your balanced conclusion]
+The reader should walk away with a PRACTICAL CHECKLIST, not just a summary of who said what.
 
 Make it visually structured and easy to scan - NOT a wall of text!
 ${langInstruction}`
@@ -284,6 +293,14 @@ export function formatModeratorSummary(
   if (summary.missing_or_underexplored_angles.length > 0) {
     content += isPl ? '### Niewystarczająco zbadane kąty:\n\n' : '### Missing or Underexplored Angles:\n\n'
     summary.missing_or_underexplored_angles.forEach((item, idx) => {
+      content += `${idx + 1}. ${item}\n`
+    })
+    content += '\n'
+  }
+
+  if (summary.position_shifts && summary.position_shifts.length > 0) {
+    content += isPl ? '### Zmiany pozycji:\n\n' : '### Position Shifts:\n\n'
+    summary.position_shifts.forEach((item, idx) => {
       content += `${idx + 1}. ${item}\n`
     })
     content += '\n'

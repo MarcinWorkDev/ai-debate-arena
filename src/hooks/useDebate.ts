@@ -346,6 +346,7 @@ export function useDebate() {
 
       try {
         const summary = JSON.parse(jsonContent) as ModeratorSummaryData
+        summary.position_shifts = summary.position_shifts || []
 
         if (
           Array.isArray(summary.core_disagreements) &&
