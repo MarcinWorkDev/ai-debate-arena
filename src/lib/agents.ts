@@ -48,7 +48,7 @@ export const moderator: Agent = {
   id: 'moderator',
   name: 'Moderator',
   color: '#ffffff', // white - stands out
-  model: import.meta.env.VITE_MODERATOR_MODEL || 'anthropic/claude-sonnet-4.6',
+  model: import.meta.env.VITE_MODERATOR_MODEL || 'anthropic/claude-opus-4.6',
   persona: 'You are a neutral debate moderator. Summarize the key arguments from all participants, identify points of agreement and disagreement, and provide a balanced conclusion. Be comprehensive but concise.',
   position: [0, 0, TABLE_RADIUS], // front side
   rotation: Math.PI, // facing the debaters (toward -Z direction)
