@@ -1,16 +1,26 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { NoCredits } from './components/auth/NoCredits'
 import { DebatePage } from './modules/debate/pages/DebatePage'
 import { ViewDebatePage } from './modules/debate/pages/ViewDebatePage'
 import { PublicDebatePage } from './modules/debate/pages/PublicDebatePage'
-import { UserAvatarsPage } from './modules/user/pages/UserAvatarsPage'
-import { PublicAvatarsPage } from './modules/user/pages/PublicAvatarsPage'
-import { UserDebatesPage } from './modules/user/pages/UserDebatesPage'
-import { UserPage } from './modules/user/pages/UserPage'
-import { AdminDashboard } from './modules/admin/pages/AdminDashboard'
-import { AdminUserViewPage } from './modules/admin/pages/AdminUserViewPage'
 import './styles/globals.css'
+
+// Lazy-loaded pages
+const UserPage = lazy(() => import('./modules/user/pages/UserPage'))
+const UserAvatarsPage = lazy(() => import('./modules/user/pages/UserAvatarsPage'))
+const PublicAvatarsPage = lazy(() => import('./modules/user/pages/PublicAvatarsPage'))
+const UserDebatesPage = lazy(() => import('./modules/user/pages/UserDebatesPage'))
+const AdminDashboard = lazy(() => import('./modules/admin/pages/AdminDashboard'))
+const AdminUserViewPage = lazy(() => import('./modules/admin/pages/AdminUserViewPage'))
+
+// Loading fallback
+const PageLoader = () => (
+  <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+    <div className="text-slate-400">Loading...</div>
+  </div>
+)
 
 function ProtectedApp() {
   return <DebatePage />
@@ -36,7 +46,9 @@ function App() {
           path="/user"
           element={
             <AuthGuard>
-              <UserPage />
+              <Suspense fallback={<PageLoader />}>
+                <UserPage />
+              </Suspense>
             </AuthGuard>
           }
         />
@@ -44,7 +56,9 @@ function App() {
           path="/user/debates"
           element={
             <AuthGuard>
-              <UserDebatesPage />
+              <Suspense fallback={<PageLoader />}>
+                <UserDebatesPage />
+              </Suspense>
             </AuthGuard>
           }
         />
@@ -52,7 +66,9 @@ function App() {
           path="/user/avatars"
           element={
             <AuthGuard>
-              <UserAvatarsPage />
+              <Suspense fallback={<PageLoader />}>
+                <UserAvatarsPage />
+              </Suspense>
             </AuthGuard>
           }
         />
@@ -60,7 +76,9 @@ function App() {
           path="/user/avatars/public"
           element={
             <AuthGuard>
-              <PublicAvatarsPage />
+              <Suspense fallback={<PageLoader />}>
+                <PublicAvatarsPage />
+              </Suspense>
             </AuthGuard>
           }
         />
@@ -76,7 +94,9 @@ function App() {
           path="/admin"
           element={
             <AuthGuard requireAdmin>
-              <AdminDashboard />
+              <Suspense fallback={<PageLoader />}>
+                <AdminDashboard />
+              </Suspense>
             </AuthGuard>
           }
         />
@@ -84,7 +104,9 @@ function App() {
           path="/admin/user/:userId"
           element={
             <AuthGuard requireAdmin>
-              <AdminUserViewPage />
+              <Suspense fallback={<PageLoader />}>
+                <AdminUserViewPage />
+              </Suspense>
             </AuthGuard>
           }
         />

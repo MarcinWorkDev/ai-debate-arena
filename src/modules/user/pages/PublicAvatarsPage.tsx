@@ -54,3 +54,5 @@ export function PublicAvatarsPage() {
   )
 }
 
+
+export default PublicAvatarsPage

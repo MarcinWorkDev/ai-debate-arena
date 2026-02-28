@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera, ContactShadows } from '@react-three/drei'
 import { EffectComposer, Bloom, Vignette, SMAA } from '@react-three/postprocessing'
@@ -10,13 +10,25 @@ import { useDebateStore } from '../../stores/debateStore'
 import { useAvatarStore } from '../../stores/avatarStore'
 import { useAuth } from '../../hooks/useAuth'
 
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint)
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`)
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mql.addEventListener('change', handler)
+    return () => mql.removeEventListener('change', handler)
+  }, [breakpoint])
+  return isMobile
+}
+
 export function Scene() {
   const activeAgent = useDebateStore((state) => state.activeAgent)
   const userName = useDebateStore((state) => state.userName)
   const selectedAgentIds = useDebateStore((state) => state.selectedAgentIds)
   const getVisibleAvatars = useAvatarStore((state) => state.getVisibleAvatars)
   const { profile } = useAuth()
-  
+  const isMobile = useIsMobile()
+
   // Memoize participants calculation to prevent recalculation on every render
   const participants = useMemo(() => {
     // Get all available avatars from database
@@ -47,7 +59,7 @@ export function Scene() {
         <PerspectiveCamera
           makeDefault
           position={[0, 6, 7]}
-          fov={50}
+          fov={isMobile ? 60 : 50}
           near={0.1}
           far={100}
         />
@@ -88,17 +100,21 @@ export function Scene() {
           dampingFactor={0.05}
         />
 
-        <EffectComposer>
-          <SMAA />
-          <Bloom
-            intensity={0.4}
-            luminanceThreshold={0.8}
-            luminanceSmoothing={0.9}
-            mipmapBlur
-          />
-          <Vignette eskil={false} offset={0.15} darkness={0.5} />
-        </EffectComposer>
+        {!isMobile && (
+          <EffectComposer>
+            <SMAA />
+            <Bloom
+              intensity={0.4}
+              luminanceThreshold={0.8}
+              luminanceSmoothing={0.9}
+              mipmapBlur
+            />
+            <Vignette eskil={false} offset={0.15} darkness={0.5} />
+          </EffectComposer>
+        )}
       </Canvas>
     </div>
   )
 }
+
+export default Scene

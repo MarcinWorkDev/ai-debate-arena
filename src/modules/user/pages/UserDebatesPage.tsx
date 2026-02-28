@@ -57,3 +57,5 @@ export function UserDebatesPage() {
   )
 }
 
+
+export default UserDebatesPage

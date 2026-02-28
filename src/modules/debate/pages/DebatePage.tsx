@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { Link } from 'react-router-dom'
-import { Scene } from '../../../components/canvas/Scene'
+
+const Scene = lazy(() => import('../../../components/canvas/Scene'))
 import { ChatPanel } from '../../../components/chat/ChatPanel'
 import { Header } from '../../../components/ui/Header'
 import { TopicInput } from '../../../components/ui/TopicInput'
@@ -43,21 +44,27 @@ export function DebatePage() {
   }, [user, loadAndRestoreDebate])
 
   return (
-    <div className="flex w-full h-full bg-slate-950">
-      {/* Left side - 3D Scene with controls */}
-      <div className="relative w-1/2 h-full">
-        <Scene />
+    <div className="flex flex-col md:flex-row w-full h-full bg-slate-950">
+      {/* Left/Top side - 3D Scene with controls */}
+      <div className="relative h-[30vh] md:h-full w-full md:w-2/5 lg:w-1/2 shrink-0">
+        <Suspense fallback={
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-950">
+            <div className="text-slate-400">Loading 3D scene...</div>
+          </div>
+        }>
+          <Scene />
+        </Suspense>
 
-        {/* Header - only on left side */}
+        {/* Header - only on scene side */}
         <Header />
 
         {/* User menu */}
-        <div className="absolute top-4 right-4 z-50 pointer-events-auto">
+        <div className="absolute top-2 right-2 md:top-4 md:right-4 z-50 pointer-events-auto">
           <Link
             to="/user"
-            className="bg-slate-900/90 backdrop-blur-sm rounded-lg border border-slate-800 px-3 py-2 flex items-center gap-2 hover:bg-slate-800 transition-colors group"
+            className="bg-slate-900/90 backdrop-blur-sm rounded-lg border border-slate-800 px-2 py-1.5 md:px-3 md:py-2 flex items-center gap-2 hover:bg-slate-800 transition-colors group"
           >
-            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center overflow-hidden">
+            <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-700 flex items-center justify-center overflow-hidden">
               {profile?.photoURL ? (
                 <img
                   src={profile.photoURL}
@@ -70,7 +77,7 @@ export function DebatePage() {
                 </span>
               )}
             </div>
-            <div className="flex flex-col items-start">
+            <div className="hidden md:flex flex-col items-start">
               <span className="text-white text-sm font-medium">
                 {profile?.displayName || 'User'}
               </span>
@@ -79,7 +86,7 @@ export function DebatePage() {
               </span>
             </div>
             <svg
-              className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors"
+              className="hidden md:block w-4 h-4 text-slate-400 group-hover:text-white transition-colors"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -89,8 +96,8 @@ export function DebatePage() {
           </Link>
         </div>
 
-        {/* Control Panel - Bottom left */}
-        <div className="absolute left-4 bottom-4 right-4 z-10">
+        {/* Control Panel - Bottom of scene (hidden on mobile, shown below scene instead) */}
+        <div className="hidden md:block absolute left-4 bottom-4 right-4 z-10">
           <div className="bg-slate-900/95 backdrop-blur-sm rounded-xl border border-slate-800 p-4 space-y-4 shadow-xl">
             {/* Debaters button */}
             {status === 'idle' && (
@@ -116,8 +123,33 @@ export function DebatePage() {
         </div>
       </div>
 
-      {/* Right side - Chat Panel */}
-      <div className="w-1/2 h-full border-l border-slate-800">
+      {/* Mobile Control Panel - between scene and chat */}
+      <div className="md:hidden shrink-0 border-y border-slate-800">
+        <div className="bg-slate-900/95 backdrop-blur-sm p-2 space-y-2">
+          {status === 'idle' && (
+            <button
+              onClick={() => setShowDebatersModal(true)}
+              className="w-full bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-300 hover:text-white text-xs transition-colors flex items-center justify-center gap-1.5"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              Debaters {selectedAgentIds.length > 0 && `(${selectedAgentIds.length})`}
+            </button>
+          )}
+          <TopicInput />
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ControlButtons />
+              <RoundsInput />
+            </div>
+            <LanguageSelect />
+          </div>
+        </div>
+      </div>
+
+      {/* Right/Bottom side - Chat Panel */}
+      <div className="flex-1 min-h-0 w-full md:border-l border-slate-800">
         <ChatPanel />
       </div>
 

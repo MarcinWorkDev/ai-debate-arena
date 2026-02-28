@@ -191,53 +191,6 @@ export async function streamChatWithUsage(
   return { content: fullContent, usage }
 }
 
-// Legacy generator-based API for backwards compatibility
-export async function* streamChat(request: ChatRequest): AsyncGenerator<string> {
-  const response = await fetch(`${API_URL}/api/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-  })
-
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`)
-  }
-
-  const reader = response.body?.getReader()
-  if (!reader) {
-    throw new Error('No response body')
-  }
-
-  const decoder = new TextDecoder()
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    const chunk = decoder.decode(value, { stream: true })
-    const lines = chunk.split('\n')
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6)
-        if (data === '[DONE]') {
-          return
-        }
-        try {
-          const parsed = JSON.parse(data)
-          if (parsed.content) {
-            yield parsed.content
-          }
-        } catch {
-          // Ignore parse errors for partial chunks
-        }
-      }
-    }
-  }
-}
-
 // Mock streaming for UI development without backend
 export async function* mockStreamChat(agentName: string, topic: string): AsyncGenerator<string> {
   const responses: Record<string, string[]> = {

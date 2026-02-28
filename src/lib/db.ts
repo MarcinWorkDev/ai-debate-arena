@@ -344,24 +344,6 @@ export async function getMessages(debateId: string): Promise<DebateMessage[]> {
   })
 }
 
-export async function getReplies(
-  debateId: string,
-  parentMessageId: string
-): Promise<DebateMessage[]> {
-  const messagesRef = collection(db, 'debates', debateId, 'messages')
-  const q = query(
-    messagesRef,
-    where('parentMessageId', '==', parentMessageId),
-    orderBy('timestamp', 'asc')
-  )
-
-  const snapshot = await getDocs(q)
-  return snapshot.docs.map(docSnap => ({
-    id: docSnap.id,
-    ...docSnap.data() as Omit<DebateMessage, 'id'>,
-  }))
-}
-
 // ============================================
 // User Credits
 // ============================================
@@ -526,9 +508,10 @@ export async function setUserCredits(
 
 function generateSlug(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  const randomValues = crypto.getRandomValues(new Uint32Array(8))
   let slug = ''
   for (let i = 0; i < 8; i++) {
-    slug += chars.charAt(Math.floor(Math.random() * chars.length))
+    slug += chars.charAt(randomValues[i] % chars.length)
   }
   return slug
 }

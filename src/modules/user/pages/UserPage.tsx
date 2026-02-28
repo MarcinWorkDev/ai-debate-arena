@@ -270,3 +270,5 @@ export function UserPage() {
   )
 }
 
+
+export default UserPage

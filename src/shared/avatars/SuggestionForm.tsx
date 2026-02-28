@@ -10,7 +10,7 @@ interface SuggestionFormProps {
   onSuccess: () => void
 }
 
-const AVAILABLE_MODELS = (import.meta.env.VITE_AVAILABLE_MODELS || 'gpt-4o,gpt-4o-mini')
+const AVAILABLE_MODELS = (import.meta.env.VITE_AVAILABLE_MODELS || 'openai/gpt-4o,google/gemini-2.5-flash,meta-llama/llama-4-maverick')
   .split(',')
   .map((m: string) => m.trim())
 
@@ -108,7 +108,7 @@ export function SuggestionForm({ avatar, onClose, onSuccess }: SuggestionFormPro
                       : 'border-slate-700'
                   }`}
                 >
-                  {AVAILABLE_MODELS.map((m) => (
+                  {AVAILABLE_MODELS.map((m: string) => (
                     <option key={m} value={m}>
                       {m}
                     </option>

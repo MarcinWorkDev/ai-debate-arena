@@ -24,6 +24,7 @@ export function DebateMessageList({ messages, showTokens = true, isAdmin = false
           key={message.id}
           avatarName={message.avatarName}
           avatarColor={message.avatarColor}
+          avatarModel={message.avatarModel}
           content={message.content}
           timestamp={message.timestamp}
           tokens={showTokens ? {

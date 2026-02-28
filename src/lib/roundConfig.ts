@@ -1,6 +1,5 @@
 // Round sequence configuration for debate architecture
 
-import type { RoundType } from './roundTypes'
 import type { Message } from '../stores/debateStore'
 
 // Configuration for when special rounds trigger
@@ -24,41 +23,6 @@ export const DEFAULT_ROUND_CONFIG: RoundSequenceConfig = {
   escalationEvery: 15,
   summaryContextSize: 40,
   statementContextSize: 20,
-}
-
-/**
- * Determines what round types should execute next based on statement count.
- * Returns an array because escalation always follows a summary.
- *
- * @param statementCount - Number of statement rounds completed
- * @param maxRounds - Maximum number of rounds for the debate
- * @param roundCount - Current round count (incremented for each statement/user message)
- * @param config - Round sequence configuration
- * @returns Array of round types to execute
- */
-export function getNextRoundTypes(
-  statementCount: number,
-  maxRounds: number,
-  roundCount: number,
-  config: RoundSequenceConfig = DEFAULT_ROUND_CONFIG
-): RoundType[] {
-  // If we've reached max rounds, final summary
-  if (roundCount >= maxRounds) {
-    return ['final_summary']
-  }
-
-  // Check escalation first (every 15 statements = summary + escalation)
-  if (statementCount > 0 && statementCount % config.escalationEvery === 0) {
-    return ['summary', 'escalation']
-  }
-
-  // Check summary (every 5 statements)
-  if (statementCount > 0 && statementCount % config.summaryEvery === 0) {
-    return ['summary']
-  }
-
-  // Default: statement round
-  return ['statement']
 }
 
 /**

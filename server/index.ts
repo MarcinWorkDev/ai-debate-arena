@@ -14,10 +14,10 @@ const __dirname = path.dirname(__filename)
 const app = express()
 const PORT = process.env.PORT || 3001
 
-// CORS configuration - allow all origins in production (Cloud Run)
+// CORS configuration
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? true // Allow all origins in production
+  origin: process.env.NODE_ENV === 'production'
+    ? (process.env.ALLOWED_ORIGINS?.split(',') || false)
     : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
   credentials: true
 }
@@ -84,10 +84,19 @@ const verifyToken = async (req: AuthenticatedRequest, res: express.Response, nex
   }
 }
 
-// OpenAI client
-const openai = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY || ''
+// Validate required API key at startup
+if (!process.env.OPENROUTER_API_KEY) {
+  console.error('❌ OPENROUTER_API_KEY environment variable is required but not set')
+  process.exit(1)
+}
+
+// OpenRouter client (OpenAI-compatible API supporting multiple providers)
+const openrouter = createOpenAI({
+  baseURL: 'https://openrouter.ai/api/v1',
+  apiKey: process.env.OPENROUTER_API_KEY,
 })
+// Use .chat to force /chat/completions endpoint (OpenRouter doesn't support /responses)
+const openai = openrouter.chat
 
 interface ChatRequest {
   model: string
@@ -105,7 +114,7 @@ app.post('/api/chat', verifyToken, async (req, res) => {
   const requestTimeout = setTimeout(() => {
     console.error('⏱️ Request timeout after', REQUEST_TIMEOUT, 'ms')
     if (!responseClosed && isResponseWritable()) {
-      safeWrite(`data: ${JSON.stringify({ error: 'Request timeout - OpenAI took too long to respond' })}\n\n`)
+      safeWrite(`data: ${JSON.stringify({ error: 'Request timeout - AI provider took too long to respond' })}\n\n`)
       safeWrite('data: [DONE]\n\n')
       res.end()
     }
@@ -144,9 +153,9 @@ app.post('/api/chat', verifyToken, async (req, res) => {
     const userId = authenticatedReq.user?.uid
 
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.OPENROUTER_API_KEY) {
       clearTimeout(requestTimeout)
-      return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
+      return res.status(500).json({ error: 'OPENROUTER_API_KEY not configured' })
     }
 
     // Set up SSE
@@ -180,7 +189,7 @@ app.post('/api/chat', verifyToken, async (req, res) => {
       streamTimeout = setTimeout(() => {
         console.error('⏱️ Stream inactivity timeout after', STREAM_TIMEOUT, 'ms')
         if (!responseClosed && isResponseWritable()) {
-          safeWrite(`data: ${JSON.stringify({ error: 'Stream timeout - no data received from OpenAI' })}\n\n`)
+          safeWrite(`data: ${JSON.stringify({ error: 'Stream timeout - no data received from AI provider' })}\n\n`)
           safeWrite('data: [DONE]\n\n')
           res.end()
         }
@@ -198,13 +207,14 @@ app.post('/api/chat', verifyToken, async (req, res) => {
           role: m.role as 'user' | 'assistant',
           content: m.content
         })),
+        maxTokens: 1024,
         maxRetries: 2, // Retry up to 2 times on failure
         onChunk({ chunk }) {
           lastChunkTime = Date.now()
           resetStreamTimeout() // Reset timeout on each chunk
         },
         onError({ error }) {
-          console.error('🔥 OpenAI onError:', {
+          console.error('🔥 AI stream onError:', {
             error: error instanceof Error ? error.message : String(error),
             errorType: error instanceof Error ? error.constructor.name : typeof error,
             stack: error instanceof Error ? error.stack : undefined,
@@ -214,13 +224,13 @@ app.post('/api/chat', verifyToken, async (req, res) => {
           // Check for specific OpenAI errors
           if (error instanceof Error) {
             if (error.message.includes('rate_limit') || error.message.includes('429')) {
-              console.error('🚫 Rate limit error from OpenAI')
+              console.error('🚫 Rate limit error from AI provider')
             }
             if (error.message.includes('timeout')) {
-              console.error('⏱️ Timeout error from OpenAI')
+              console.error('⏱️ Timeout error from AI provider')
             }
             if (error.message.includes('quota') || error.message.includes('billing')) {
-              console.error('💳 Quota/billing error from OpenAI')
+              console.error('💳 Quota/billing error from AI provider')
             }
           }
           

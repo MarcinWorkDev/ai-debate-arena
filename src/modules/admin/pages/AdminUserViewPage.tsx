@@ -563,3 +563,5 @@ export function AdminUserViewPage() {
     </PageLayout>
   )
 }
+
+export default AdminUserViewPage

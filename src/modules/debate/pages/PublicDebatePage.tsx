@@ -107,6 +107,11 @@ export function PublicDebatePage() {
                         <h3 className="text-lg font-semibold text-white">
                           {avatar.name}
                         </h3>
+                        {avatar.model && !avatar.isHuman && (
+                          <span className="text-[10px] text-white/40 font-medium px-1.5 py-0.5 rounded bg-white/5">
+                            {avatar.model}
+                          </span>
+                        )}
                         {avatar.isHuman && (
                           <span className="text-xs text-slate-400 bg-slate-700 px-2 py-1 rounded">
                             {debate.language === 'pl' ? 'Użytkownik' : 'User'}

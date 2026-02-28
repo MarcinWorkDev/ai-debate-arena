@@ -25,7 +25,7 @@ const AVAILABLE_COLORS = [
   '#84cc16', // lime
 ]
 
-const AVAILABLE_MODELS = (import.meta.env.VITE_AVAILABLE_MODELS || 'gpt-4o,gpt-4o-mini')
+const AVAILABLE_MODELS = (import.meta.env.VITE_AVAILABLE_MODELS || 'openai/gpt-4o,google/gemini-2.5-flash,meta-llama/llama-4-maverick')
   .split(',')
   .map((m: string) => m.trim())
 
@@ -138,7 +138,7 @@ export function AvatarForm({ avatar, onClose, onSuccess }: AvatarFormProps) {
                   onChange={(e) => setModel(e.target.value)}
                   className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none transition-all"
                 >
-                  {AVAILABLE_MODELS.map((m) => (
+                  {AVAILABLE_MODELS.map((m: string) => (
                     <option key={m} value={m}>
                       {m}
                     </option>

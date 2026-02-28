@@ -55,3 +55,5 @@ export function UserAvatarsPage() {
   )
 }
 
+
+export default UserAvatarsPage
