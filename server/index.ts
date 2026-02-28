@@ -207,7 +207,6 @@ app.post('/api/chat', verifyToken, async (req, res) => {
           role: m.role as 'user' | 'assistant',
           content: m.content
         })),
-        maxOutputTokens: 1024,
         maxRetries: 2, // Retry up to 2 times on failure
         onChunk({ chunk }) {
           lastChunkTime = Date.now()

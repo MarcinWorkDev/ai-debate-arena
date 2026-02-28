@@ -254,8 +254,6 @@ export function useDebate() {
         tokensUsed,
         roundType: 'statement',
       })
-      // Clear streaming content
-      useDebateStore.setState({ currentStreamingContent: '' })
       useDebateStore.getState().addTokensUsed(tokensUsed)
       useDebateStore.getState().incrementRound()
 
@@ -582,7 +580,6 @@ export function useDebate() {
         tokensUsed,
         roundType: 'final_summary',
       })
-      useDebateStore.setState({ currentStreamingContent: '' })
       useDebateStore.getState().addTokensUsed(tokensUsed)
 
       // Save to Firestore
@@ -627,7 +624,6 @@ export function useDebate() {
           content: errorContent,
           roundType: 'final_summary',
         })
-        useDebateStore.setState({ currentStreamingContent: '' })
         await saveMessageToDb(
           moderator.id,
           moderator.name,

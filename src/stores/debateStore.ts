@@ -132,7 +132,8 @@ export const useDebateStore = create<DebateState>((set, get) => ({
       id: crypto.randomUUID(),
       timestamp: Date.now(),
     }
-    set((state) => ({ messages: [...state.messages, newMessage] }))
+    // Clear streaming content atomically to prevent duplicate render frames
+    set((state) => ({ messages: [...state.messages, newMessage], currentStreamingContent: '' }))
   },
 
   updateStreamingContent: (content) => set({ currentStreamingContent: content }),
@@ -142,22 +143,24 @@ export const useDebateStore = create<DebateState>((set, get) => ({
     // Accumulate chunks and update at most every frame (~16ms) using requestAnimationFrame
     let buffer = ''
     let rafId: number | null = null
-    
+
     const flush = () => {
-      if (buffer !== '') {
+      // Only flush if currentStreamingContent is not empty (i.e. not cleared by addMessage)
+      const current = get().currentStreamingContent
+      if (buffer !== '' && current !== '') {
         set({ currentStreamingContent: buffer })
-        buffer = ''
       }
+      buffer = ''
       rafId = null
     }
-    
+
     return (chunk: string) => {
       const state = get()
       if (buffer === '') {
         buffer = state.currentStreamingContent
       }
       buffer += chunk
-      
+
       if (rafId === null) {
         rafId = requestAnimationFrame(flush)
       }
